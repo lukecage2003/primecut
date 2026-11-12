@@ -12,6 +12,7 @@ import {
   exportSequence,
   findRecovery,
   hardwareReport,
+  diagnostics,
   importMediaFile,
   makePeaks,
   makeProxy,
@@ -192,6 +193,15 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('tasks:clearFinished', () => orchestrator.clearFinished());
 
   ipcMain.handle('system:hardware', () => hardwareReport());
+  ipcMain.handle('system:saveDiagnostics', async (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender)!;
+    const st = loadSettings();
+    const report = await diagnostics([st.projectsDir, app.getPath('userData'), app.getPath('temp')].filter((p) => fs.existsSync(p)), `Primestone ${app.getVersion()}`, st.transcriber?.enabled ? () => checkTranscriber(st.transcriber) : undefined);
+    const r = await dialog.showSaveDialog(w, { title: 'Save diagnostics report', defaultPath: path.join(app.getPath('documents'), `primestone-diagnostics-${new Date().toISOString().slice(0, 10)}.json`), filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (r.canceled || !r.filePath) return null;
+    await fsp.writeFile(r.filePath, JSON.stringify(report, null, 2));
+    return r.filePath;
+  });
   ipcMain.handle('system:reveal', (_e, f: string) => shell.showItemInFolder(f));
 
   ipcMain.handle('window:confirmClose', () => {

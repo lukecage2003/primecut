@@ -67,6 +67,7 @@ const api: PrimestoneApi = {
   },
   system: {
     hardware: () => invoke('system:hardware'),
+    saveDiagnostics: () => invoke('system:saveDiagnostics'),
     reveal: (f) => invoke('system:reveal', f),
   },
   window: {

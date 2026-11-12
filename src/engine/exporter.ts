@@ -8,6 +8,7 @@
  *   without normalisation (unity gain), then hard-trimmed to the sequence length.
  * - Output is written to a temp file and renamed only after FFmpeg succeeds, then verified.
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -25,6 +26,7 @@ import {
   PANEL_OVERFLOW,
   planSequence,
   sequenceDuration,
+  secondsToFrames,
   duckEnvelope,
   envelopeToSendcmd,
   trackActivity,
@@ -84,8 +86,17 @@ export function buildExportPlan(
   seq: Sequence,
   output: string,
   /** duckFiles: trackId → sendcmd script (from envelopeToSendcmd) for ducked audio tracks. */
-  opts: { range?: ExportRange; encoder?: string; assFile?: string; duckFiles?: Record<string, string> } = {},
+  opts: {
+    range?: ExportRange;
+    encoder?: string;
+    assFile?: string;
+    duckFiles?: Record<string, string>;
+    /** 'video' = picture only (segments), 'audio' = sound only (full-length AAC pass). */
+    streams?: 'both' | 'video' | 'audio';
+  } = {},
 ): ExportPlan {
+  const wantVideo = opts.streams !== 'audio';
+  const wantAudio = opts.streams !== 'video';
   const s = project.exportSettings;
   const { width: W, height: H, frameRate: r, sampleRate: SR } = seq.settings;
   const rateStr = `${r.num}/${r.den}`;
@@ -115,7 +126,7 @@ export function buildExportPlan(
   };
 
   const plan = planSequence(seq, project.media);
-  for (const it of plan.filter((x) => x.kind === 'video')) {
+  for (const it of plan.filter((x) => wantVideo && x.kind === 'video')) {
     const p = visible(it);
     if (!p) continue;
     const clipSec = framesToSeconds(p.frames, r);
@@ -212,7 +223,7 @@ export function buildExportPlan(
   // Audio
   const audioLabels: string[] = [];
   const busInputs: Record<string, string[]> = {};
-  for (const it of plan.filter((x) => x.kind === 'audio')) {
+  for (const it of plan.filter((x) => wantAudio && x.kind === 'audio')) {
     const p = visible(it);
     if (!p) continue;
     const clipSec = framesToSeconds(p.frames, r);
@@ -256,22 +267,13 @@ export function buildExportPlan(
   }
 
   const encoder = opts.encoder ?? (s.videoCodec === 'hevc' ? 'libx265' : 'libx264');
-  const args = [
-    '-v', 'error',
-    ...inputs,
-    '-filter_complex', filters.join(';'),
-    '-map', '[vout]',
-    '-map', '[aout]',
-    ...encoderArgs(s, encoder),
-    '-r', rateStr,
-    '-c:a', 'aac',
-    '-b:a', `${s.audioBitrateKbps}k`,
-    '-ar', String(SR),
-    '-frames:v', String(frames),
-    '-progress', 'pipe:1',
-    '-nostats',
-  ];
-  if (s.container === 'mp4' || s.container === 'mov') args.push('-movflags', '+faststart');
+  const fg = wantVideo && wantAudio ? filters : filters.filter((f) => (wantVideo ? !/\[a(?:out|base)\]|\[a\d+\]|\[duck_/.test(f) : !/\[vout\]|\[base0\]|\[v\d+\]|\[ov\d+\]|\[bg\d+\]|\[s\d+[ab]\]/.test(f)));
+  const args = ['-v', 'error', ...inputs, '-filter_complex', fg.join(';')];
+  if (wantVideo) args.push('-map', '[vout]', ...encoderArgs(s, encoder), '-r', rateStr, '-frames:v', String(frames));
+  if (wantAudio) args.push('-map', '[aout]', '-c:a', 'aac', '-b:a', `${s.audioBitrateKbps}k`, '-ar', String(SR));
+  if (!wantAudio) args.push('-an');
+  args.push('-progress', 'pipe:1', '-nostats');
+  if (wantVideo && (s.container === 'mp4' || s.container === 'mov')) args.push('-movflags', '+faststart');
   args.push(output);
   return { args, durationSec: durSec, frames, hasAudio: audioLabels.length > 0 };
 }
@@ -312,14 +314,48 @@ export interface ExportJob {
   encoder?: string;
   /** Project cache folder (waveform peaks for ducking); defaults to a cache next to the output. */
   cacheDir?: string;
+  /** Segment length for segmented rendering (s). 0 = always single pass; undefined = automatic. */
+  segmentSeconds?: number;
   onProgress?: (fraction: number) => void;
   onLog?: (line: string) => void;
   signal?: AbortSignal;
 }
 
+/**
+ * Segment boundaries (frames) close to every `target` frames, placed where no transition or fade
+ * is running, so every segment renders exactly what the single-pass export would.
+ */
+export function segmentBoundaries(project: Project, seq: Sequence, range: ExportRange, target: number): number[] {
+  const plan = planSequence(seq, project.media).filter((p) => p.kind === 'video');
+  const busy = (f: number) => plan.some((p) => (f > p.start && f < p.start + p.rampIn) || (f > p.end - p.rampOut && f < p.end));
+  const cuts = [...new Set(plan.flatMap((p) => [p.start, p.end]))].filter((f) => f > range.start && f < range.end && !busy(f)).sort((a, b) => a - b);
+  const out = [range.start];
+  for (let goal = range.start + target; goal < range.end - target / 3; goal += target) {
+    const near = cuts.filter((c) => c > out.at(-1)! + target / 3 && Math.abs(c - goal) <= target / 3);
+    let b = near.sort((x, y) => Math.abs(x - goal) - Math.abs(y - goal))[0];
+    if (b === undefined) {
+      // no cut nearby: any frame outside ramps
+      for (let d = 0; d < target / 3 && b === undefined; d++) for (const f of [goal + d, goal - d]) if (f > out.at(-1)! && f < range.end && !busy(f)) (b ??= f);
+    }
+    if (b !== undefined && b > out.at(-1)!) out.push(b);
+  }
+  out.push(range.end);
+  return out;
+}
+
+/** Long or clip-heavy timelines are rendered in segments (resumable, short command lines on Windows). */
+export function shouldSegment(project: Project, seq: Sequence, range: ExportRange): boolean {
+  const frames = range.end - range.start;
+  const r = seq.settings.frameRate;
+  const clips = planSequence(seq, project.media).filter((p) => p.end > range.start && p.start < range.end).length;
+  return framesToSeconds(frames, r) > 240 || clips > 60;
+}
+
 export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
   const seq = job.project.sequences[job.sequenceId];
   if (!seq) throw new ExportError('Sequence not found');
+  const range0 = job.range ?? { start: 0, end: sequenceDuration(seq) };
+  if (job.segmentSeconds !== 0 && (job.segmentSeconds || shouldSegment(job.project, seq, range0))) return exportSegmented(job, seq, range0);
   for (const t of seq.tracks)
     for (const c of t.clips) {
       const m = job.project.media[c.mediaId];
@@ -386,3 +422,91 @@ export async function writeDuckFiles(project: Project, seq: Sequence, cacheRoot:
 }
 
 export const duckFilterName = (trackId: string) => `duck_${trackId.replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}`;
+
+/**
+ * Segmented export: the picture is rendered in segments (each a plain range export, video only),
+ * the sound in one full-length pass, then both are joined without re-encoding and verified.
+ * Finished segments are kept until the export succeeds, so a cancelled/crashed export resumes.
+ */
+async function exportSegmented(job: ExportJob, seq: Sequence, range: ExportRange): Promise<VerifyResult> {
+  for (const t of seq.tracks)
+    for (const c of t.clips) {
+      const m = job.project.media[c.mediaId];
+      if (c.enabled && !t.disabled && (!m || !fs.existsSync(m.path))) throw new ExportError(`Media offline: ${m?.name ?? c.name}`);
+    }
+  const r = seq.settings.frameRate;
+  const ext = path.extname(job.output) || `.${job.project.exportSettings.container}`;
+  const base = path.basename(job.output, ext);
+  const outDir = path.dirname(job.output);
+  const work = path.join(outDir, `.${base}.segments`);
+  await fsp.mkdir(work, { recursive: true });
+  const target = Math.max(1, secondsToFrames(job.segmentSeconds ?? 60, r));
+  const bounds = segmentBoundaries(job.project, seq, range, target);
+  const total = range.end - range.start;
+  const encoder = job.encoder ?? (job.project.exportSettings.videoCodec === 'hevc' ? 'libx265' : 'libx264');
+  const segFiles: string[] = [];
+  let doneFrames = 0;
+  const report = (f: number) => job.onProgress?.(Math.min(0.99, (0.88 * f) / total));
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const seg = { start: bounds[i]!, end: bounds[i + 1]! };
+    const ass = seq.captions?.some((c) => c.end > seg.start && c.start < seg.end) ? path.join(work, `seg${i}.ass`) : undefined;
+    if (ass) await fsp.writeFile(ass, captionsToAss(seq, seq.captions, seg.start), 'utf8');
+    const probePlan = buildExportPlan(job.project, seq, 'OUT', { range: seg, encoder, assFile: ass ? 'ASS' : undefined, streams: 'video' });
+    // the segment is identified by what it renders (resume only reuses identical work)
+    const key = crypto.createHash('sha256').update(JSON.stringify([probePlan.args, ass ? captionsToAss(seq, seq.captions, seg.start) : ''])).digest('hex').slice(0, 16);
+    const file = path.join(work, `seg${String(i).padStart(4, '0')}-${key}${ext}`);
+    segFiles.push(file);
+    const frames = seg.end - seg.start;
+    let ok = false;
+    if (fs.existsSync(file)) {
+      const v = await verifySegment(file, frames).catch(() => false);
+      ok = v;
+      if (ok) job.onLog?.(`segment ${i + 1}/${bounds.length - 1} reused`);
+    }
+    if (!ok) {
+      const tmp = `${file}.part${ext}`;
+      const plan = buildExportPlan(job.project, seq, tmp, { range: seg, encoder, assFile: ass, streams: 'video' });
+      await ffmpeg(plan.args, {
+        signal: job.signal,
+        onStdoutLine: (l) => {
+          if (l.startsWith('frame=')) report(doneFrames + Math.min(frames, Number(l.slice(6))));
+        },
+      }).catch(async (e) => {
+        await fsp.rm(tmp, { force: true });
+        throw e;
+      });
+      if (!(await verifySegment(tmp, frames))) throw new ExportError(`Segment ${i + 1} verification failed`);
+      await fsp.rename(tmp, file);
+    }
+    if (ass) await fsp.rm(ass, { force: true });
+    doneFrames += frames;
+    report(doneFrames);
+  }
+  // sound: one full-length pass (ducking envelopes, limiter) → AAC
+  const duckFiles = await writeDuckFiles(job.project, seq, job.cacheDir ?? path.join(outDir, '.primestone-cache'), work, 'audio', range.start, job.signal);
+  const audioFile = path.join(work, 'audio.m4a');
+  const ap = buildExportPlan(job.project, seq, audioFile, { range, duckFiles, streams: 'audio' });
+  await ffmpeg(['-y', ...ap.args.slice(0, -1), '-f', 'mp4', audioFile], { signal: job.signal });
+  job.onProgress?.(0.95);
+  // join (stream copy) and verify
+  const list = path.join(work, 'list.txt');
+  await fsp.writeFile(list, segFiles.map((f) => `file '${f.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n') + '\n');
+  const tmp = path.join(outDir, `.${base}.rendering${ext}`);
+  const mux = ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-i', audioFile, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-frames:v', String(total)];
+  if (ext === '.mp4' || ext === '.mov') mux.push('-movflags', '+faststart');
+  await ffmpeg([...mux, tmp], { signal: job.signal });
+  const result = await verifyExport(tmp, seq, total);
+  if (!result.ok) {
+    await fsp.rm(tmp, { force: true });
+    throw new ExportError(`Export verification failed: ${result.problems.join(', ')}`);
+  }
+  await fsp.rename(tmp, job.output);
+  await fsp.rm(work, { recursive: true, force: true });
+  job.onProgress?.(1);
+  return result;
+}
+
+async function verifySegment(file: string, frames: number): Promise<boolean> {
+  const { stdout } = await ffprobe(['-v', 'error', '-count_packets', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', file]);
+  return Number(stdout.toString().trim()) === frames;
+}

@@ -153,6 +153,8 @@ export interface PrimestoneApi {
   };
   system: {
     hardware(): Promise<HardwareReport>;
+    /** Runs read-only diagnostics + short benchmarks and saves them as JSON where the user chooses. */
+    saveDiagnostics(): Promise<string | null>;
     reveal(file: string): Promise<void>;
   };
   window: {

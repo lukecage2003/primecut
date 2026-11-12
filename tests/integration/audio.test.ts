@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { History, createProject, placeMedia, type Project } from '../../src/core';
@@ -55,5 +56,49 @@ describe('automatic ducking', () => {
     const voiceLevel = await bandRmsDb(out, 0.6, 1.6, 220);
     const ref = await bandRmsDb(voice, 0.6, 1.6, 220);
     expect(Math.abs(voiceLevel - ref)).toBeLessThan(1.5);
+  });
+});
+
+describe('segmented export', () => {
+  it('renders in segments, joins without re-encoding, matches the single-pass result and resumes', async () => {
+    const { makeColorClip, frameColor } = await import('./fixtures');
+    const dir = tmpDir();
+    const red = await importMediaFile(await makeColorClip(path.join(dir, 'red.mp4'), 'red', 3));
+    const blue = await importMediaFile(await makeColorClip(path.join(dir, 'blue.mp4'), 'blue', 3, { freq: 880 }));
+    let p: Project = createProject('seg', { width: 320, height: 180, frameRate: { num: 30, den: 1 } });
+    p = { ...p, media: { [red.id]: red, [blue.id]: blue } };
+    const h = new History(p);
+    h.commit('place', (d) => {
+      const seq = d.sequences[d.activeSequenceId]!;
+      placeMedia(seq, d.media[red.id]!, { videoTrack: 0, audioTrack: 0, start: 0, mode: 'overwrite' });
+      placeMedia(seq, d.media[blue.id]!, { videoTrack: 0, audioTrack: 0, start: 90, mode: 'overwrite' });
+      placeMedia(seq, d.media[red.id]!, { videoTrack: 0, audioTrack: 0, start: 180, mode: 'overwrite' });
+      seq.captions = [{ id: 'c1', start: 40, end: 140, text: 'Sous-titre à cheval', style: 'subtitle' }];
+    });
+    const out = path.join(dir, 'seg.mp4');
+    // interrupted export: finished segments are kept…
+    const ac = new AbortController();
+    await expect(
+      exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out, segmentSeconds: 2, signal: ac.signal, onProgress: (f) => f > 0.3 && ac.abort() }),
+    ).rejects.toThrow();
+    expect(fs.existsSync(out)).toBe(false);
+    // …and reused when the export is started again
+    const logs: string[] = [];
+    const res = await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out, segmentSeconds: 2, cacheDir: path.join(dir, 'Cache'), onLog: (l) => logs.push(l) });
+    expect(logs.some((l) => l.includes('reused'))).toBe(true);
+    expect(res.ok).toBe(true);
+    expect(res.frames).toBe(270);
+    const [r1] = await frameColor(out, 1.5);
+    const [, , b2] = await frameColor(out, 4.5);
+    const [r3] = await frameColor(out, 7.5);
+    expect(r1).toBeGreaterThan(150);
+    expect(b2).toBeGreaterThan(150);
+    expect(r3).toBeGreaterThan(150);
+    // audio covers the whole video with the right tones
+    const single = path.join(dir, 'single.mp4');
+    await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: single, segmentSeconds: 0 });
+    const tone = async (f: string, a: number, b: number, freq: number) => bandRmsDb(f, a, b, freq);
+    expect(Math.abs((await tone(out, 4, 5, 880)) - (await tone(single, 4, 5, 880)))).toBeLessThan(1);
+    expect(fs.existsSync(path.join(dir, '.seg.segments'))).toBe(false); // cleaned after success
   });
 });

@@ -62,6 +62,22 @@ export function SettingsPanel() {
           </dl>
         )}
         <div className="actions">
+          <button
+            className="btn"
+            data-testid="save-diagnostics"
+            title="Hardware, free space and two short benchmarks, saved as a JSON file you can share. Nothing is sent anywhere."
+            onClick={async () => {
+              setErr('');
+              try {
+                const f = await api.system.saveDiagnostics();
+                if (f) setErr(`Diagnostics saved: ${f}`);
+              } catch (e) {
+                setErr(String(e));
+              }
+            }}
+          >
+            Save diagnostics report…
+          </button>
           <button className="btn primary" onClick={() => store.set({ overlay: null })}>
             Done
           </button>
