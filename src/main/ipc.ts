@@ -27,6 +27,7 @@ import {
   PROJECT_EXT,
 } from '../engine';
 import type { ExportOutcome, ExportRequest, ImportResult, OpenResult } from '../shared/api';
+import { checkTranscriber } from '../engine/transcribe';
 import { forgetRecent, listRecent, loadSettings, pushRecent, saveSettings } from './settings';
 
 export const orchestrator = new TaskOrchestrator(2);
@@ -75,6 +76,19 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('settings:get', () => loadSettings());
   ipcMain.handle('settings:set', (_e, patch) => saveSettings(patch));
+  ipcMain.handle('transcriber:check', (_e, cfg) => checkTranscriber(cfg));
+  ipcMain.handle('transcriber:pick', async (e, kind: 'python' | 'whisper' | 'modelDir' | 'modelFile') => {
+    const w = BrowserWindow.fromWebContents(e.sender)!;
+    const r =
+      kind === 'modelDir'
+        ? await dialog.showOpenDialog(w, { title: 'Model folder (faster-whisper / CTranslate2)', properties: ['openDirectory'] })
+        : await dialog.showOpenDialog(w, {
+            title: kind === 'python' ? 'Python interpreter with faster-whisper' : kind === 'whisper' ? 'whisper.cpp executable (whisper-cli)' : 'ggml model file',
+            properties: ['openFile'],
+            filters: kind === 'modelFile' ? [{ name: 'ggml model', extensions: ['bin'] }] : undefined,
+          });
+    return r.canceled ? null : (r.filePaths[0] ?? null);
+  });
 
   ipcMain.handle('project:create', async (_e, dir: string, name: string, project: Project) => {
     const safe = sanitizeName(name);

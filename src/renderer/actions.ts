@@ -432,7 +432,7 @@ export async function runProduction(inputs: ProductionInputs, prefs: ProductionP
     }));
     for (const m of r.newMedia) void prepareMedia(m);
     const qc = r.sequence.production!;
-    toast(`${r.sequence.name}: ${r.report.shots} shots, ${r.report.beats} sequences, QC ${qc.qcScore}/100${r.report.fixes.length ? ` · ${r.report.fixes.length} auto-fix(es)` : ''}`, 'success', undefined, 6000);
+    toast(`${r.sequence.name}: ${r.report.shots} shots, ${r.report.beats} sequences, QC ${qc.qcScore}/100${r.report.fixes.length ? ` · ${r.report.fixes.length} auto-fix(es)` : ''} · sync: ${r.report.alignment.method === 'transcript' ? 'word-level' : 'pauses'}${r.report.transcription ? ` (${r.report.transcription})` : ''}`, 'success', undefined, 8000);
     return true;
   } catch (err) {
     store.setEditor({ productionTask: null });

@@ -48,12 +48,15 @@ export function ProductionPanel() {
               <button className="btn ghost" style={{ height: 22, marginLeft: 8 }} onClick={async () => {
                 try {
                   const f = await api.production.readTextFile();
-                  if (f) setScript(f.text);
+                  if (f) {
+                    setScript(f.text);
+                    toast(`Script imported${f.sections ? ` · ${f.sections} sections` : ''}${f.repairs ? ` · ${f.repairs} glued words repaired` : ''}`, 'info');
+                  }
                 } catch (e) {
                   toast(errorText(e), 'error');
                 }
               }}>
-                Load .txt / .md…
+                Load script (PDF, .txt, .md)…
               </button>
             </span>
             <textarea

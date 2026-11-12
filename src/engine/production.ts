@@ -19,7 +19,10 @@ import {
   parseScript,
   runQc,
   speechFromSilences,
+  importProductionScript,
+  isCanonicalScript,
 } from '../production';
+import { loadDictionary } from './scriptFile';
 import { analyzeAudio } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
 import { renderGenerator } from './generators';
@@ -122,13 +125,18 @@ export interface ProductionResult {
     scanErrors: { path: string; error: string }[];
     notes: string[];
     entities: string[];
+    /** Set when the script was converted from a production document. */
+    scriptImport?: { title: string | null; sections: number; repairs: number };
+    transcription?: string;
   };
 }
 
 export async function produceVideo(req: ProductionRequest, progress: (f: number, msg: string) => void = () => undefined, signal?: AbortSignal): Promise<ProductionResult> {
   const narration = req.project.media[req.narrationMediaId];
   if (!narration?.probe.audio) throw new Error('Narration audio not found in the project');
-  const script = parseScript(req.script);
+  // real production scripts (PDF/Docs exports) are converted; Primestone Markdown is used as is
+  const imported = isCanonicalScript(req.script) ? null : importProductionScript(req.script, { dictionary: loadDictionary(), transcriptVocabulary: req.transcript?.map((w) => w.text) });
+  const script = parseScript(imported ? imported.markdown : req.script);
   if (!script.sentences.length) throw new Error('The script contains no narration text');
 
   progress(0.05, 'Analysing narration');
@@ -138,8 +146,9 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
 
   progress(0.25, 'Synchronising text and voice');
   let alignment: AlignmentResult;
-  if (req.transcript?.length) alignment = alignToTranscript(script.sentences, req.transcript);
-  else alignment = alignByPauses(script.sentences, speechFromSilences(na.silences, narration.probe.durationSec));
+  const speech = speechFromSilences(na.silences, narration.probe.durationSec);
+  if (req.transcript?.length) alignment = alignToTranscript(script.sentences, req.transcript, speech);
+  else alignment = alignByPauses(script.sentences, speech);
 
   progress(0.35, 'Indexing media');
   const known = new Set(Object.values(req.project.media).map((m) => m.path));
@@ -196,6 +205,6 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   return {
     sequence: built.sequence,
     newMedia: [...scan.assets, ...built.generated].filter((a) => used.has(a.id)),
-    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: script.notes, entities },
+    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: script.notes, entities, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

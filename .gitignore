@@ -6,3 +6,4 @@ playwright-report/
 .tmp/
 *.log
 vendor/ffmpeg/
+.scratch/

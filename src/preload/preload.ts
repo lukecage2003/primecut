@@ -6,6 +6,10 @@ const invoke = (ch: string, ...args: unknown[]) => ipcRenderer.invoke(ch, ...arg
 const api: PrimestoneApi = {
   platform: process.platform,
   appVersion: () => invoke('app:version'),
+  transcriber: {
+    check: (cfg) => invoke('transcriber:check', cfg),
+    pick: (kind) => invoke('transcriber:pick', kind),
+  },
   settings: {
     get: () => invoke('settings:get'),
     set: (patch) => invoke('settings:set', patch),

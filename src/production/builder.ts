@@ -258,6 +258,15 @@ export function buildSequence(input: BuildInput): BuildResult {
       }
     }
   }
+  // on-screen texts requested by the script (unless a typography composition already shows them)
+  for (const b of beats) {
+    if (!b.onScreen.length) continue;
+    const shown = generated.some((g) => g.generator?.kind === 'typography' && g.generator.title && b.onScreen.includes(g.generator.title));
+    if (shown) continue;
+    let st = F(b.start + 0.2);
+    for (const c of captions) if ((c.style === 'title' || c.style === 'lower-third') && c.start < st + F(3) && c.end > st) st = c.end + F(0.2);
+    add(st, st + F(3), b.onScreen[0]!, 'title');
+  }
   for (const s of shots.filter((x) => x.quality === 'missing')) {
     const b = beats[s.beat]!;
     const need = [...b.hints, ...b.entities.map((e) => e.name), ...b.keywords.slice(0, 3)].slice(0, 4).join(', ');

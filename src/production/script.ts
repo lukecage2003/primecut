@@ -18,6 +18,10 @@ export interface ScriptSentence {
   hints: string[];
   /** A [PAUSE] directive follows this sentence. */
   breakAfter: boolean;
+  /** Comic references ([SOURCE: …]) that back this sentence: strong entity/issue hints. */
+  sources: string[];
+  /** On-screen texts ([ECRAN: …]) to show while this sentence is spoken. */
+  onScreen: string[];
 }
 
 export interface ScriptSection {
@@ -30,6 +34,8 @@ export interface ParsedScript {
   sentences: ScriptSentence[];
   titles: { section: number; text: string }[];
   notes: string[];
+  /** Sound directions ([SON: …]) with the sentence they follow (-1 = before any narration). */
+  sound: { afterSentence: number; text: string }[];
 }
 
 const ABBREV = /(?:\b(?:M|Mme|Mlle|Dr|St|Ste|vol|n°|No|cf|etc|ex|p|pp|Mr|Mrs|Jr|Sr|vs)\.)$/i;
@@ -63,7 +69,10 @@ export function parseScript(source: string): ParsedScript {
   const sentences: ScriptSentence[] = [];
   const titles: { section: number; text: string }[] = [];
   const notes: string[] = [];
+  const sound: { afterSentence: number; text: string }[] = [];
   let section = 0;
+  let prevParagraph: ScriptSentence[] = [];
+  let carry = { hints: [] as string[], sources: [] as string[], onScreen: [] as string[] };
   let paragraph = 0;
   const blocks = source.replace(/\r\n?/g, '\n').split(/\n\s*\n/);
   for (const block of blocks) {
@@ -88,8 +97,9 @@ export function parseScript(source: string): ParsedScript {
       return '';
     });
     const hints: string[] = [];
-    let pauseMarks = 0;
-    // visual hints are attached to the sentence that follows them (marker \u2063<n>\u2063)
+    const sources: string[] = [];
+    const screens: string[] = [];
+    // visual hints are attached to the sentence that follows them (marker ⁣<n>⁣)
     const cleaned = text
       .replace(/\[(TITRE|TITLE)\s*:\s*([^\]]+)\]/gi, (_, __, t: string) => {
         titles.push({ section, text: t.trim() });
@@ -97,18 +107,28 @@ export function parseScript(source: string): ParsedScript {
       })
       .replace(/\[(VISUEL|VISUAL|IMAGE)\s*:\s*([^\]]+)\]/gi, (_, __, t: string) => {
         hints.push(t.trim());
-        return ` \u2063${hints.length - 1}\u2063 `;
+        return ` ⁣${hints.length - 1}⁣ `;
+      })
+      .replace(/\[(SOURCE|SOURCES|REF)\s*:\s*([^\]]+)\]/gi, (_, __, t: string) => {
+        sources.push(t.trim());
+        return ' ';
+      })
+      .replace(/\[(ECRAN|ÉCRAN|SCREEN|TEXTE)\s*:\s*([^\]]+)\]/gi, (_, __, t: string) => {
+        screens.push(t.trim());
+        return ' ';
+      })
+      .replace(/\[(SON|SOUND|MUSIQUE|MUSIC|SFX)\s*:\s*([^\]]+)\]/gi, (_, __, t: string) => {
+        sound.push({ afterSentence: sentences.length - 1, text: t.trim() });
+        return ' ';
       })
       .replace(/\[NOTE\s*:\s*([^\]]+)\]/gi, (_, t: string) => {
         notes.push(t.trim());
         return ' ';
       })
-      .replace(/\[PAUSE\]/gi, () => {
-        pauseMarks++;
-        return ' \u2029 ';
-      })
+      .replace(/\[PAUSE\]/gi, () => '   ')
       .replace(/[*_]{1,2}([^*_]+)[*_]{1,2}/g, '$1');
     const parts = cleaned.split(' ');
+    const before = sentences.length;
     let pending: string[] = [];
     parts.forEach((part, pi) => {
       const ss = splitSentences(part);
@@ -127,13 +147,36 @@ export function parseScript(source: string): ParsedScript {
           syllables: syllables(text),
           hints: [...pending, ...own],
           breakAfter: pi < parts.length - 1 && si === ss.length - 1,
+          sources: [...sources],
+          onScreen: [],
         });
         pending = [];
       });
     });
-    if (pending.length && sentences.length) sentences.at(-1)!.hints.push(...pending);
-    void pauseMarks;
-    paragraph++;
+    const mine = sentences.slice(before);
+    if (mine.length) {
+      if (pending.length) mine.at(-1)!.hints.push(...pending);
+      if (screens.length) mine[0]!.onScreen.push(...screens);
+      prevParagraph = mine;
+      paragraph++;
+    } else if (prevParagraph.length && prevParagraph[0]!.section === section) {
+      // a block made only of directives describes the paragraph just before it:
+      // shots are spread over its sentences in order, sources back all of them
+      pending.forEach((h, i) => prevParagraph[Math.min(prevParagraph.length - 1, Math.floor((i * prevParagraph.length) / pending.length))]!.hints.push(h));
+      for (const s of prevParagraph) s.sources.push(...sources.filter((x) => !s.sources.includes(x)));
+      prevParagraph[0]!.onScreen.push(...screens);
+    } else {
+      // directives before any narration in this section go to the next sentence
+      carry.hints.push(...pending);
+      carry.sources.push(...sources);
+      carry.onScreen.push(...screens);
+    }
+    if (mine.length && (carry.hints.length || carry.sources.length || carry.onScreen.length)) {
+      mine[0]!.hints.unshift(...carry.hints);
+      for (const s of mine) s.sources.push(...carry.sources);
+      mine[0]!.onScreen.unshift(...carry.onScreen);
+      carry = { hints: [], sources: [], onScreen: [] };
+    }
   }
-  return { sections, sentences, titles, notes };
+  return { sections, sentences, titles, notes, sound };
 }

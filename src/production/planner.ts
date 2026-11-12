@@ -19,6 +19,10 @@ export interface Beat {
   entities: EntityMention[];
   hints: string[];
   keywords: string[];
+  /** Comic references backing the beat ([SOURCE: …] in the script). */
+  sources: string[];
+  /** On-screen texts requested by the script. */
+  onScreen: string[];
 }
 
 export function buildBeats(script: ParsedScript, aligned: AlignedSentence[], prefs: ProductionPreferences, index = new EntityIndex()): Beat[] {
@@ -43,7 +47,7 @@ export function buildBeats(script: ParsedScript, aligned: AlignedSentence[], pre
       if (s.section !== c.section || prevSentence?.breakAfter || dur >= prefs.shotTarget || (newSubject && dur >= prefs.shotMin) || dur + (a.end - a.start) > prefs.shotMax * 1.5) close();
     }
     if (!cur) {
-      cur = { index: beats.length, section: s.section, sentenceIndexes: [], start: a.start, end: a.end, text: '', entities: [], hints: [], keywords: [] };
+      cur = { index: beats.length, section: s.section, sentenceIndexes: [], start: a.start, end: a.end, text: '', entities: [], hints: [], keywords: [], sources: [], onScreen: [] };
     }
     const b: Beat = cur;
     b.sentenceIndexes.push(s.index);
@@ -51,6 +55,8 @@ export function buildBeats(script: ParsedScript, aligned: AlignedSentence[], pre
     b.text = (b.text + ' ' + s.text).trim();
     b.entities.push(...ents.filter((e) => !b.entities.some((x) => x.name === e.name)));
     for (const h of s.hints) if (!b.hints.includes(h)) b.hints.push(h);
+    for (const x of s.sources ?? []) if (!b.sources.includes(x)) b.sources.push(x);
+    b.onScreen.push(...(s.onScreen ?? []));
   }
   close();
   for (const b of beats) b.keywords = [...new Set(contentWords(b.text))];
@@ -108,6 +114,21 @@ export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reaso
     if (hit) {
       score += 5 * (hit / ht.length) + 2;
       reasons.push(`matches visual hint “${h}”`);
+    }
+  }
+  for (const src of beat.sources ?? []) {
+    const st = tokens(src.replace(/\([^)]*\)/g, ' ')).filter((t) => t.length > 2 && !/^\d+$/.test(t));
+    const hit = st.filter((t) => item.tokens.has(t)).length;
+    const issues = [...src.matchAll(/#\s?(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?/g)].flatMap((m) => {
+      const a = Number(m[1]);
+      const b = m[2] ? Number(m[2]) : a;
+      return b >= a && b - a < 30 ? Array.from({ length: b - a + 1 }, (_, i) => String(a + i)) : [String(a)];
+    });
+    if (hit && st.length) {
+      const issueHit = issues.some((n) => item.issues.has(n));
+      score += 3 * (hit / st.length) + (issueHit ? 3 : 1);
+      reasons.push(`matches source “${src}”${issueHit ? ' (same issue)' : ''}`);
+      break;
     }
   }
   const kw = beat.keywords.filter((k) => item.tokens.has(k));

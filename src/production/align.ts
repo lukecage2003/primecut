@@ -10,7 +10,7 @@
  *    word-level timings that survive recognition errors.
  */
 import type { ScriptSentence } from './script';
-import { normalize, syllables, tokens } from './text';
+import { syllables, tokens } from './text';
 
 export interface Interval {
   start: number;
@@ -199,7 +199,11 @@ export interface RecognisedWord {
 }
 
 /** Aligns script words to recognised words (Levenshtein-style DP on normalised tokens). */
-export function alignToTranscript(sentences: ScriptSentence[], recognised: RecognisedWord[]): AlignmentResult {
+/**
+ * `speech` (optional): speech intervals from the audio analysis. Script words the recogniser missed
+ * are then laid over the real speech inside their gap (pauses excluded) instead of being spread evenly.
+ */
+export function alignToTranscript(sentences: ScriptSentence[], recognised: RecognisedWord[], speech?: Interval[]): AlignmentResult {
   const script: { s: number; w: string; raw: string }[] = [];
   for (const s of sentences) for (const raw of s.text.split(/\s+/).filter(Boolean)) {
     const t = tokens(raw).join('');
@@ -208,32 +212,60 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
   const rec = recognised.map((r) => ({ ...r, w: tokens(r.text).join('') }));
   const n = script.length;
   const m = rec.length;
+  // tokens are already normalised: equality, or a shared 4-letter stem (conjugations, plurals)
   const sim = (a: string, b: string) => {
-    if (!a || !b) return a === b ? 1 : 0;
     if (a === b) return 1;
-    if (a.length > 3 && b.length > 3 && (a.startsWith(b.slice(0, 4)) || b.startsWith(a.slice(0, 4)))) return 0.7;
-    return normalize(a) === normalize(b) ? 1 : 0;
+    if (a.length > 3 && b.length > 3 && a.charCodeAt(0) === b.charCodeAt(0) && a.slice(0, 4) === b.slice(0, 4)) return 0.7;
+    return 0;
   };
-  const dp = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
-  const bt = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1));
-  for (let i = 1; i <= n; i++) (dp[i]![0] = i), (bt[i]![0] = 1);
-  for (let j = 1; j <= m; j++) (dp[0]![j] = j), (bt[0]![j] = 2);
-  for (let i = 1; i <= n; i++)
-    for (let j = 1; j <= m; j++) {
-      const sub = dp[i - 1]![j - 1]! + (1 - sim(script[i - 1]!.w, rec[j - 1]!.w)) * 1.5;
-      const del = dp[i - 1]![j]! + 1;
-      const ins = dp[i]![j - 1]! + 1;
-      if (sub <= del && sub <= ins) (dp[i]![j] = sub), (bt[i]![j] = 3);
-      else if (del <= ins) (dp[i]![j] = del), (bt[i]![j] = 1);
-      else (dp[i]![j] = ins), (bt[i]![j] = 2);
+  // Banded DP: the band follows a path through unique trigram anchors, so memory stays linear
+  // (a 90-minute narration has ~14k words) and long skipped/added passages are still followed.
+  const center = anchorPath(script.map((x) => x.w), rec.map((x) => x.w));
+  const W = Math.max(150, Math.min(600, Math.ceil(Math.max(n, m) * 0.04)));
+  const lo = new Int32Array(n + 1);
+  const hi = new Int32Array(n + 1);
+  for (let i = 0; i <= n; i++) {
+    const c = center(i);
+    lo[i] = Math.max(0, c - W);
+    hi[i] = Math.min(m, c + W);
+  }
+  for (let i = 1; i <= n; i++) {
+    lo[i] = Math.min(lo[i]!, hi[i - 1]!); // keep the band connected
+    hi[i] = Math.max(hi[i]!, lo[i - 1]!);
+  }
+  lo[0] = 0;
+  hi[n] = m;
+  const bt: Uint8Array[] = new Array(n + 1);
+  let prev = new Float64Array(m + 1).fill(Infinity);
+  let cur = new Float64Array(m + 1).fill(Infinity);
+  bt[0] = new Uint8Array(hi[0]! - lo[0]! + 1);
+  for (let j = lo[0]!; j <= hi[0]!; j++) (prev[j] = j), (bt[0]![j - lo[0]!] = 2);
+  for (let i = 1; i <= n; i++) {
+    cur.fill(Infinity, lo[i]!, hi[i]! + 1);
+    if (lo[i]! > 0) cur[lo[i]! - 1] = Infinity;
+    const row = (bt[i] = new Uint8Array(hi[i]! - lo[i]! + 1));
+    for (let j = lo[i]!; j <= hi[i]!; j++) {
+      const del = prev[j]! + 1;
+      const ins = j > lo[i]! ? cur[j - 1]! + 1 : Infinity;
+      const sub = j > 0 ? prev[j - 1]! + (1 - sim(script[i - 1]!.w, rec[j - 1]!.w)) * 1.5 : Infinity;
+      if (sub <= del && sub <= ins) (cur[j] = sub), (row[j - lo[i]!] = 3);
+      else if (del <= ins) (cur[j] = del), (row[j - lo[i]!] = 1);
+      else (cur[j] = ins), (row[j - lo[i]!] = 2);
     }
+    [prev, cur] = [cur, prev];
+    // cells outside this row's band must read as unreachable for the next row
+    if (lo[i]! > 0) prev[lo[i]! - 1] = Infinity;
+    if (hi[i]! < m) prev[hi[i]! + 1] = Infinity;
+  }
   const match: (number | null)[] = new Array(n).fill(null);
+  const weak: (number | null)[] = new Array(n).fill(null);
   let i = n;
   let j = m;
   while (i > 0 || j > 0) {
-    const b = bt[i]![j];
+    const b = j >= lo[i]! && j <= hi[i]! ? bt[i]![j - lo[i]!] : i > 0 ? 1 : 2;
     if (b === 3) {
       if (sim(script[i - 1]!.w, rec[j - 1]!.w) > 0) match[i - 1] = j - 1;
+      else weak[i - 1] = j - 1; // misrecognised word in the same position: its timing is still right
       i--;
       j--;
     } else if (b === 1) i--;
@@ -242,6 +274,7 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
   // word timings: matched → recognised times; unmatched → interpolated between neighbours
   const times: { start: number; end: number; estimated: boolean }[] = new Array(n);
   for (let k = 0; k < n; k++) if (match[k] !== null) times[k] = { start: rec[match[k]!]!.start, end: rec[match[k]!]!.end, estimated: false };
+  for (let k = 0; k < n; k++) if (!times[k] && weak[k] !== null) times[k] = { start: rec[weak[k]!]!.start, end: rec[weak[k]!]!.end, estimated: true };
   const t0 = rec[0]?.start ?? 0;
   const t1 = rec.at(-1)?.end ?? 0;
   for (let k = 0; k < n; k++) {
@@ -250,21 +283,123 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
     while (a >= 0 && !times[a]) a--;
     let b = k + 1;
     while (b < n && !times[b]) b++;
-    const ta = a >= 0 ? times[a]!.end : t0;
-    const tb = b < n ? times[b]!.start : t1;
+    let ta = a >= 0 ? times[a]!.end : t0;
+    let tb = b < n ? times[b]!.start : t1;
     const span = b - a - 1;
     const pos = k - a - 1;
+    const inGap = speech?.map((iv) => ({ start: Math.max(ta, iv.start), end: Math.min(tb, iv.end) })).filter((iv) => iv.end - iv.start > 0.05) ?? [];
+    const speechLen = inGap.reduce((x, iv) => x + iv.end - iv.start, 0);
+    if (speech && speechLen > 0.1) {
+      // lay the words over the speech inside the gap
+      const at = (f: number) => {
+        let rem = f * speechLen;
+        for (const iv of inGap) {
+          if (rem <= iv.end - iv.start) return iv.start + rem;
+          rem -= iv.end - iv.start;
+        }
+        return inGap.at(-1)!.end;
+      };
+      times[k] = { start: at(pos / span), end: at((pos + 1) / span), estimated: true };
+      continue;
+    }
+    // no audio evidence: a gap that crosses a sentence boundary contains a pause, so keep the
+    // words next to the neighbour of their own sentence (~0.32 s per word)
+    const per = 0.32;
+    if (tb - ta > span * per * 1.6) {
+      const sameA = a >= 0 && script[a]!.s === script[k]!.s;
+      const sameB = b < n && script[b]!.s === script[k]!.s;
+      if (sameB && !sameA) ta = Math.max(ta, tb - span * per);
+      else if (sameA && !sameB) tb = Math.min(tb, ta + span * per);
+    }
     const st = ta + ((tb - ta) * pos) / span;
     times[k] = { start: st, end: ta + ((tb - ta) * (pos + 1)) / span, estimated: true };
   }
   const out: AlignedSentence[] = [];
   let anchored = 0;
+  const bySentence = new Map<number, number[]>();
+  script.forEach((x, k) => {
+    const l = bySentence.get(x.s);
+    if (l) l.push(k);
+    else bySentence.set(x.s, [k]);
+  });
   for (const s of sentences) {
-    const idx = script.map((x, k) => (x.s === s.index ? k : -1)).filter((k) => k >= 0);
+    const idx = bySentence.get(s.index) ?? [];
     if (!idx.length) continue;
     const words = idx.map((k) => ({ text: script[k]!.raw, ...times[k]! }));
     if (!words[0]!.estimated && !words.at(-1)!.estimated) anchored++;
     out.push({ index: s.index, start: words[0]!.start, end: words.at(-1)!.end, words, method: 'transcript' });
   }
+  if (speech?.length) snapToSpeech(out, speech);
   return { sentences: out, method: 'transcript', confidence: out.length ? anchored / out.length : 0 };
+}
+
+/** Monotonic path script-index → recognised-index through trigrams that are unique on both sides. */
+function anchorPath(a: string[], b: string[]): (i: number) => number {
+  const key = (x: string[], k: number) => `${x[k]}\u0001${x[k + 1]}\u0001${x[k + 2]}`;
+  const uniq = (x: string[]) => {
+    const mp = new Map<string, number>();
+    for (let k = 0; k + 2 < x.length; k++) mp.set(key(x, k), mp.has(key(x, k)) ? -1 : k);
+    return mp;
+  };
+  const ua = uniq(a);
+  const ub = uniq(b);
+  const pairs: [number, number][] = [];
+  for (const [g, ia] of ua) {
+    const ib = ub.get(g);
+    if (ia >= 0 && ib !== undefined && ib >= 0) pairs.push([ia, ib]);
+  }
+  pairs.sort((x, y) => x[0] - y[0]);
+  // longest increasing subsequence on the recognised index keeps the anchors monotonic
+  const tails: number[] = [];
+  const prevIdx = new Int32Array(pairs.length).fill(-1);
+  pairs.forEach((p, k) => {
+    let l = 0;
+    let h = tails.length;
+    while (l < h) {
+      const mid = (l + h) >> 1;
+      if (pairs[tails[mid]!]![1] < p[1]) l = mid + 1;
+      else h = mid;
+    }
+    if (l > 0) prevIdx[k] = tails[l - 1]!;
+    tails[l] = k;
+  });
+  const chain: [number, number][] = [];
+  for (let k = tails.at(-1) ?? -1; k >= 0; k = prevIdx[k]!) chain.unshift(pairs[k]!);
+  const pts: [number, number][] = [[0, 0], ...chain, [a.length, b.length]];
+  let k = 0; // callers query increasing indexes
+  return (i: number) => {
+    if (k > 0 && pts[k]![0] > i) k = 0;
+    while (k + 1 < pts.length - 1 && pts[k + 1]![0] <= i) k++;
+    const [x0, y0] = pts[k]!;
+    const [x1, y1] = pts[Math.min(k + 1, pts.length - 1)]!;
+    return Math.round(x1 === x0 ? y0 : y0 + ((i - x0) * (y1 - y0)) / (x1 - x0));
+  };
+}
+
+/**
+ * Recogniser word times drift by a few hundred ms around pauses (the first word after a pause is
+ * often early). Sentence edges are snapped to the nearest real speech onset/offset when one is close
+ * and doing so keeps sentences in order.
+ */
+function snapToSpeech(out: AlignedSentence[], speech: Interval[], tol = 0.6) {
+  const onsets = speech.map((iv) => iv.start);
+  const offsets = speech.map((iv) => iv.end);
+  const nearest = (xs: number[], t: number) => xs.reduce((b, x) => (Math.abs(x - t) < Math.abs(b - t) ? x : b), Infinity);
+  out.forEach((s, k) => {
+    const prevEnd = k > 0 ? out[k - 1]!.end : -Infinity;
+    const on = nearest(onsets, s.start);
+    if (Math.abs(on - s.start) <= tol && on >= prevEnd - 0.05 && on < s.words[0]!.end + 0.3) {
+      const d = on - s.start;
+      s.start = on;
+      s.words[0]!.start = on;
+      if (s.words[0]!.end < on) s.words[0]!.end = on + 0.05;
+      void d;
+    }
+    const nextStart = k + 1 < out.length ? out[k + 1]!.start : Infinity;
+    const off = nearest(offsets, s.end);
+    if (Math.abs(off - s.end) <= tol && off <= nextStart + 0.05 && off > s.words.at(-1)!.start) {
+      s.end = off;
+      s.words.at(-1)!.end = off;
+    }
+  });
 }

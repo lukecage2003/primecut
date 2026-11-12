@@ -3,6 +3,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import type { AppSettings, RecentProject } from '../shared/api';
 import { atomicWrite } from '../engine/projectStore';
+import { DEFAULT_TRANSCRIBER } from '../engine/transcribe';
 
 const file = () => path.join(app.getPath('userData'), 'settings.json');
 const recentFile = () => path.join(app.getPath('userData'), 'recent.json');
@@ -13,12 +14,15 @@ export function defaultSettings(): AppSettings {
     performanceProfile: 'quality',
     autosaveSeconds: 60,
     projectsDir: path.join(app.getPath('documents'), 'Primestone Projects'),
+    transcriber: { ...DEFAULT_TRANSCRIBER },
   };
 }
 
 export function loadSettings(): AppSettings {
   try {
-    return { ...defaultSettings(), ...JSON.parse(fs.readFileSync(file(), 'utf8')) };
+    const d = defaultSettings();
+    const j = JSON.parse(fs.readFileSync(file(), 'utf8'));
+    return { ...d, ...j, transcriber: { ...d.transcriber, ...(j.transcriber ?? {}) } };
   } catch {
     return defaultSettings();
   }

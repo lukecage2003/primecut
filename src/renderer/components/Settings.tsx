@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { HardwareReport } from '../../shared/api';
+import type { EngineCheck, HardwareReport, TranscriberConfig } from '../../shared/api';
 import { api } from '../api';
 import { updateSettings } from '../actions';
 import { store, useStore } from '../store';
@@ -41,6 +41,7 @@ export function SettingsPanel() {
           Quality and Deep Quality always export with the CPU encoder at your chosen quality. Balanced uses a hardware encoder only if one was verified working on
           this machine. Primestone never lowers quality without telling you.
         </div>
+        <TranscriberSettings />
         <div className="section-title">Hardware (read-only inspection)</div>
         {!hw && !err && <div className="muted">Inspecting…</div>}
         {err && <div style={{ color: 'var(--danger)' }}>{err}</div>}
@@ -67,5 +68,75 @@ export function SettingsPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Local transcription (optional). Primestone never installs Python packages or downloads a model by
+ * itself: the user selects an engine and a model already on disk; "Check" only runs a read-only test.
+ */
+function TranscriberSettings() {
+  const settings = useStore((s) => s.settings)!;
+  const cfg = settings.transcriber;
+  const [check, setCheck] = useState<EngineCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const set = (patch: Partial<TranscriberConfig>) => {
+    setCheck(null);
+    void updateSettings({ transcriber: { ...cfg, ...patch } });
+  };
+  const pick = async (kind: 'python' | 'whisper' | 'modelDir' | 'modelFile', key: keyof TranscriberConfig) => {
+    const p = await api.transcriber.pick(kind);
+    if (p) set({ [key]: p } as Partial<TranscriberConfig>);
+  };
+  return (
+    <>
+      <div className="section-title">Local transcription (word-level sync)</div>
+      <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }} data-testid="transcriber-settings">
+        <label className="row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} data-testid="transcriber-enabled" />
+          Use local transcription for Script-to-Video
+        </label>
+        <select className="input" style={{ width: 170 }} value={cfg.backend} onChange={(e) => set({ backend: e.target.value as TranscriberConfig['backend'] })}>
+          <option value="faster-whisper">faster-whisper (Python)</option>
+          <option value="whisper.cpp">whisper.cpp (executable)</option>
+        </select>
+        <select className="input" style={{ width: 110 }} value={cfg.device} onChange={(e) => set({ device: e.target.value as TranscriberConfig['device'] })} title="GPU (CUDA) is used only if the engine supports it">
+          <option value="auto">Auto</option>
+          <option value="cuda">GPU (CUDA)</option>
+          <option value="cpu">CPU</option>
+        </select>
+        <input className="input" style={{ width: 60 }} value={cfg.language} onChange={(e) => set({ language: e.target.value.trim() || 'fr' })} title="Language code" />
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+        {cfg.backend === 'faster-whisper' ? (
+          <button className="btn ghost" onClick={() => void pick('python', 'pythonPath')}>Python… {cfg.pythonPath ? `(${cfg.pythonPath.split(/[\\/]/).slice(-3).join('/')})` : '(system default)'}</button>
+        ) : (
+          <button className="btn ghost" onClick={() => void pick('whisper', 'whisperCppPath')}>whisper-cli… {cfg.whisperCppPath ? `(${cfg.whisperCppPath.split(/[\\/]/).pop()})` : ''}</button>
+        )}
+        <button className="btn ghost" onClick={() => void pick(cfg.backend === 'faster-whisper' ? 'modelDir' : 'modelFile', 'modelPath')}>
+          Model… {cfg.modelPath ? `(${cfg.modelPath.split(/[\\/]/).pop()})` : '(none)'}
+        </button>
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              setCheck(await api.transcriber.check(cfg));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          data-testid="transcriber-check"
+        >
+          {busy ? 'Checking…' : 'Check'}
+        </button>
+        {check && <span style={{ color: check.ok ? 'var(--ok, #6c6)' : 'var(--danger)' }}>{check.detail}</span>}
+      </div>
+      <div className="tiny">
+        Runs fully offline once set up. Primestone does not download models: get a Whisper model yourself (Whisper weights are MIT-licensed, e.g. “small” ≈ 0.5 GB,
+        “medium” ≈ 1.5 GB) and select it here. Audio never leaves this computer. Without transcription, sync is sentence-level from pauses.
+      </div>
+    </>
   );
 }

@@ -8,8 +8,9 @@ import type { EditStyle } from '../production/preferences';
 import type { HardwareReport, PerformanceProfile } from '../engine/hardware';
 import type { MediaResolution } from '../engine/projectStore';
 import type { TaskInfo } from '../engine/tasks';
+import type { EngineCheck, TranscriberConfig } from '../engine/transcribe';
 
-export type { HardwareReport, MediaResolution, TaskInfo, PerformanceProfile };
+export type { HardwareReport, MediaResolution, TaskInfo, PerformanceProfile, TranscriberConfig, EngineCheck };
 
 export interface RecentProject {
   file: string;
@@ -38,6 +39,8 @@ export interface AppSettings {
   performanceProfile: PerformanceProfile;
   autosaveSeconds: number;
   projectsDir: string;
+  /** Optional local speech recognition for word-level sync (off until the user configures it). */
+  transcriber: TranscriberConfig;
 }
 
 export interface ExportRequest {
@@ -75,6 +78,8 @@ export interface ProductionOutcome {
     scanErrors: { path: string; error: string }[];
     notes: string[];
     entities: string[];
+    scriptImport?: { title: string | null; sections: number; repairs: number };
+    transcription?: string;
   };
 }
 
@@ -89,6 +94,12 @@ export interface PrimestoneApi {
   settings: {
     get(): Promise<AppSettings>;
     set(patch: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  transcriber: {
+    /** Read-only check of the configured engine/model (never installs or downloads). */
+    check(cfg: TranscriberConfig): Promise<EngineCheck>;
+    /** Native picker for the engine executable, a model folder or a model file. */
+    pick(kind: 'python' | 'whisper' | 'modelDir' | 'modelFile'): Promise<string | null>;
   };
   project: {
     create(dir: string, name: string, project: Project): Promise<OpenResult>;
@@ -128,7 +139,8 @@ export interface PrimestoneApi {
     setPreferences(p: ProductionPreferences, reason: string): Promise<PreferencesState>;
     learn(generated: EditStyle, edited: EditStyle): Promise<{ state: PreferencesState; changes: string[] }>;
     revertPreferences(version: number): Promise<PreferencesState>;
-    readTextFile(): Promise<{ path: string; text: string } | null>;
+    /** Opens a script (.pdf/.txt/.md); production scripts are converted to Primestone Markdown. */
+    readTextFile(): Promise<{ path: string; text: string; title?: string | null; meta?: Record<string, string>; repairs?: number; sections?: number } | null>;
     chooseFolders(): Promise<string[]>;
     /** Renders a procedural composition; returns the cached file and its fingerprint. */
     renderVisual(projectFile: string, spec: import('../core/generators').GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null): Promise<{ path: string; fingerprint: import('../core/model').MediaFingerprint }>;

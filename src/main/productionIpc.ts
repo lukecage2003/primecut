@@ -1,3 +1,7 @@
+import { SCRIPT_EXTENSIONS, readScriptDocument } from '../engine/scriptFile';
+import { transcribe } from '../engine/transcribe';
+import { loadSettings } from './settings';
+import type { RecognisedWord } from '../production';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -46,14 +50,39 @@ export function registerProductionIpc() {
       priority: 'high',
       resources: { cpuSlots: 2 },
       run: async (c) => {
+        // optional local transcription (word-level sync); any failure falls back to pause alignment
+        const tcfg = loadSettings().transcriber;
+        let transcript: RecognisedWord[] | null = null;
+        let transcription = 'not configured (sentence-level sync from pauses)';
+        const narr = project.media[inputs.narrationMediaId];
+        if (tcfg?.enabled && narr) {
+          try {
+            c.progress(0.01, 'Transcribing narration locally');
+            const t = await transcribe(narr.path, tcfg, path.join(path.dirname(projectFile), 'Cache'), {
+              signal: c.signal,
+              fingerprint: narr.fingerprint.partialHash + narr.fingerprint.size,
+              prompt: promptFromScript(inputs.script),
+              progress: (f) => c.progress(0.01 + 0.3 * f, `Transcribing narration locally (${Math.round(f * 100)}%)`),
+            });
+            transcript = t.words;
+            transcription = `${t.engine} · ${t.words.length} words${t.cached ? ' (cached)' : ` in ${t.seconds.toFixed(0)} s`}`;
+            c.log(`Transcription: ${transcription}`);
+          } catch (e) {
+            if (c.signal.aborted) throw e;
+            transcription = `failed, fell back to pauses: ${(e as Error).message}`;
+            c.log(`Transcription ${transcription}`);
+          }
+        }
         const r = await produceVideo(
-          { project, projectDir: path.dirname(projectFile), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs },
+          { project, projectDir: path.dirname(projectFile), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript },
           (f, m) => {
-            c.progress(f, m);
+            const base = transcript ? 0.31 : 0;
+            c.progress(base + (1 - base) * f, m);
             c.log(m);
           },
           c.signal,
         );
+        r.report.transcription = transcription;
         results.set(id, r);
         return r;
       },
@@ -89,12 +118,12 @@ export function registerProductionIpc() {
   });
   ipcMain.handle('production:readTextFile', async (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
-    const r = await dialog.showOpenDialog(w, { title: 'Open script', filters: [{ name: 'Text', extensions: ['txt', 'md', 'markdown'] }], properties: ['openFile'] });
+    const r = await dialog.showOpenDialog(w, { title: 'Open script', filters: [{ name: 'Script (PDF, text, Markdown)', extensions: SCRIPT_EXTENSIONS }], properties: ['openFile'] });
     const f = r.canceled ? null : r.filePaths[0];
     if (!f) return null;
-    const st = await fsp.stat(f);
-    if (st.size > 5 * 1024 * 1024) throw new Error('Script file is larger than 5 MB');
-    return { path: f, text: await fsp.readFile(f, 'utf8') };
+    const doc = await readScriptDocument(f);
+    const im = doc.imported;
+    return { path: f, text: im.markdown, title: im.title, meta: im.meta, repairs: im.repairs.length, sections: im.sectionTargets.length };
   });
   ipcMain.handle('production:renderVisual', (_e, projectFile: string, spec: GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null) =>
     orchestrator.submit({
@@ -113,4 +142,20 @@ export function registerProductionIpc() {
     const r = await dialog.showOpenDialog(w, { title: 'Media folders', properties: ['openDirectory', 'multiSelections'] });
     return r.canceled ? [] : r.filePaths;
   });
+}
+
+/** Proper names from the script bias the recogniser toward the right spelling (Krakoa, Darkseid…). */
+function promptFromScript(script: string): string {
+  const names = new Map<string, number>();
+  for (const m of script.matchAll(/\b\p{Lu}[\p{L}’'-]{2,}(?:\s+\p{Lu}[\p{L}’'-]{2,})*/gu)) {
+    const n = m[0];
+    if (/^[\p{Lu}\s’'-]+$/u.test(n)) continue; // headings in capitals
+    names.set(n, (names.get(n) ?? 0) + 1);
+  }
+  return [...names.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 40)
+    .map(([n]) => n)
+    .join(', ')
+    .slice(0, 600);
 }
