@@ -148,7 +148,7 @@ describe('fades and render plan', () => {
   });
 });
 
-describe('schema v1 → v2 migration', () => {
+describe('schema v1 → current migration', () => {
   it('adds transitions and fades to v1 documents', () => {
     const p = JSON.parse(JSON.stringify(h.present)) as Record<string, any>;
     p.schemaVersion = 1;
@@ -158,11 +158,16 @@ describe('schema v1 → v2 migration', () => {
         for (const c of t.clips) {
           delete c.fadeIn;
           delete c.fadeOut;
+          delete c.motion;
         }
       }
+    for (const s of Object.values(p.sequences) as any[]) delete s.captions;
     const m = migrateProject(p);
-    expect(m.schemaVersion).toBe(2);
+    expect(m.schemaVersion).toBe(3);
     expect(validateProject(m)).toEqual([]);
-    expect(m.sequences[m.activeSequenceId]!.tracks[0]!.clips[0]!.fadeIn).toBe(0);
+    const s = m.sequences[m.activeSequenceId]!;
+    expect(s.tracks[0]!.clips[0]!.fadeIn).toBe(0);
+    expect(s.tracks[0]!.clips[0]!.motion).toEqual({ kind: 'none', amount: 0 });
+    expect(s.captions).toEqual([]);
   });
 });

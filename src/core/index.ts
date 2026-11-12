@@ -6,3 +6,5 @@ export * from './validate';
 export * from './migrations';
 export * from './transitions';
 export * from './plan';
+export * from './motion';
+export * from './captions';

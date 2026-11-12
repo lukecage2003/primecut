@@ -1,7 +1,7 @@
 import type { Rational } from './time';
 
 /** Current native project schema version. Bump together with a migration in migrations.ts. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type MediaKind = 'video' | 'audio' | 'image';
 export type TrackKind = 'video' | 'audio';
@@ -40,6 +40,23 @@ export interface MediaFingerprint {
   partialHash: string;
 }
 
+/**
+ * Usage rights of a media item. Everything Primestone puts in an automatic edit carries its
+ * provenance; only 'owned' and 'reusable' media may be published without a human decision.
+ */
+export type RightsUsage = 'owned' | 'user-provided' | 'reusable' | 'permission-required' | 'view-only' | 'unknown';
+
+export interface MediaRights {
+  usage: RightsUsage;
+  source: string; // 'user-library' | provider id
+  license?: string;
+  licenseUrl?: string;
+  attribution?: string;
+  sourceUrl?: string;
+  checkedAt: string;
+  note?: string;
+}
+
 export interface MediaAsset {
   id: string;
   name: string;
@@ -53,6 +70,9 @@ export interface MediaAsset {
   importedAt: string;
   /** Optional preview proxy (relative to the project cache dir). */
   proxy?: string;
+  rights?: MediaRights;
+  /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
+  tags?: string[];
 }
 
 export interface ClipTransform {
@@ -64,6 +84,16 @@ export interface ClipTransform {
 }
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
+
+export type MotionKind = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
+
+/** Camera move inside the clip's frame (Ken Burns). `amount` = extra zoom (0.15 = 15%). */
+export interface ClipMotion {
+  kind: MotionKind;
+  amount: number;
+}
+
+export const NO_MOTION: ClipMotion = { kind: 'none', amount: 0 };
 
 export interface Clip {
   id: string;
@@ -87,6 +117,7 @@ export interface Clip {
   /** Fade from/to transparent (video) or silence (audio), in frames. */
   fadeIn: number;
   fadeOut: number;
+  motion: ClipMotion;
 }
 
 export type TransitionKind = 'cross-dissolve';
@@ -122,6 +153,17 @@ export interface Marker {
   color: string;
 }
 
+export type CaptionStyle = 'subtitle' | 'title' | 'lower-third' | 'placeholder';
+
+/** Timed text burned into the picture (subtitles, section titles, lower thirds). */
+export interface Caption {
+  id: string;
+  start: number; // frames
+  end: number; // frames (exclusive)
+  text: string;
+  style: CaptionStyle;
+}
+
 export interface SequenceSettings {
   width: number;
   height: number;
@@ -136,6 +178,32 @@ export interface Sequence {
   /** Video tracks are listed bottom (V1) → top; audio tracks A1 → An. */
   tracks: Track[];
   markers: Marker[];
+  captions: Caption[];
+  /** Present on sequences produced by the Script-to-Video engine (report, explanations). */
+  production?: ProductionMeta;
+}
+
+export interface ProductionShotMeta {
+  start: number;
+  end: number;
+  mediaId: string | null;
+  beat: number;
+  quality: 'strong' | 'weak' | 'missing';
+  reasons: string[];
+  text: string;
+}
+
+export interface ProductionMeta {
+  generatedAt: string;
+  version: number;
+  alignment: { method: string; confidence: number };
+  preferencesVersion: number;
+  qcScore: number;
+  qcIssues: { severity: 'error' | 'warning' | 'info'; code: string; message: string; frame?: number }[];
+  shots: ProductionShotMeta[];
+  /** Style measured at generation time (baseline for preference learning). */
+  style: Record<string, unknown>;
+  narrationMediaId: string;
 }
 
 export interface ExportSettings {
@@ -200,6 +268,7 @@ export function createSequence(name: string, settings?: Partial<SequenceSettings
     },
     tracks: [createTrack('video', 1), createTrack('video', 2), createTrack('audio', 1), createTrack('audio', 2)],
     markers: [],
+    captions: [],
   };
 }
 

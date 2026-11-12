@@ -5,3 +5,5 @@ export * from './projectStore';
 export * from './exporter';
 export * from './tasks';
 export * from './hardware';
+export * from './audioAnalysis';
+export * from './production';

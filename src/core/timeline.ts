@@ -186,17 +186,18 @@ export function placeMedia(seq: Sequence, asset: MediaAsset, opts: PlaceOptions)
     gainDb: 0,
     fadeIn: 0,
     fadeOut: 0,
+    motion: { kind: 'none' as const, amount: 0 },
     linkId,
   };
   const ids: string[] = [];
   if (vt) {
-    const clip: Clip = { ...base, id: newId(), transform: { ...DEFAULT_TRANSFORM } };
+    const clip: Clip = { ...base, id: newId(), transform: { ...DEFAULT_TRANSFORM }, motion: { kind: 'none', amount: 0 } };
     vt.clips.push(clip);
     sortTrack(vt);
     ids.push(clip.id);
   }
   if (at) {
-    const clip: Clip = { ...base, id: newId(), transform: { ...DEFAULT_TRANSFORM } };
+    const clip: Clip = { ...base, id: newId(), transform: { ...DEFAULT_TRANSFORM }, motion: { kind: 'none', amount: 0 } };
     at.clips.push(clip);
     sortTrack(at);
     ids.push(clip.id);
@@ -459,7 +460,7 @@ export function slideClip(seq: Sequence, media: MediaMap, clipId: string, delta:
   return d;
 }
 
-export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform' | 'fadeIn' | 'fadeOut'>>) {
+export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform' | 'fadeIn' | 'fadeOut' | 'motion'>>) {
   const f = findClip(seq, clipId);
   if (!f) throw new EditError('Clip not found');
   assertUnlocked(f.track);

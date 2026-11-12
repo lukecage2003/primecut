@@ -23,6 +23,14 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     return doc;
   },
+  /** v2 → v3: clip camera motion, sequence captions (media rights/tags are optional). */
+  2: (doc) => {
+    for (const seq of Object.values((doc.sequences ?? {}) as Record<string, AnyRec>)) {
+      seq.captions ??= [];
+      for (const t of (seq.tracks ?? []) as AnyRec[]) for (const c of (t.clips ?? []) as AnyRec[]) c.motion ??= { kind: 'none', amount: 0 };
+    }
+    return doc;
+  },
 };
 
 export class MigrationError extends Error {}

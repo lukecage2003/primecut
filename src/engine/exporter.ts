@@ -19,6 +19,8 @@ import {
   type Sequence,
   framesToSeconds,
   rateToNumber,
+  captionsToAss,
+  motionExpr,
   planSequence,
   sequenceDuration,
 } from '../core';
@@ -66,7 +68,12 @@ export function encoderArgs(s: ExportSettings, encoder: string): string[] {
 }
 
 /** Builds the FFmpeg command for a sequence. Pure: no I/O. */
-export function buildExportPlan(project: Project, seq: Sequence, output: string, opts: { range?: ExportRange; encoder?: string } = {}): ExportPlan {
+/** Escapes a filesystem path for use inside a quoted filtergraph option (Windows drive colons). */
+export function escapeFilterPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+}
+
+export function buildExportPlan(project: Project, seq: Sequence, output: string, opts: { range?: ExportRange; encoder?: string; assFile?: string } = {}): ExportPlan {
   const s = project.exportSettings;
   const { width: W, height: H, frameRate: r, sampleRate: SR } = seq.settings;
   const rateStr = `${r.num}/${r.den}`;
@@ -114,7 +121,22 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
     const oh = even(h * fit);
     const x = Math.round((W - ow) / 2 + tr.x);
     const y = Math.round((H - oh) / 2 + tr.y);
-    const chain = [`fps=${rateStr}`, 'setpts=PTS-STARTPTS', `trim=end_frame=${p.frames}`, 'setpts=PTS-STARTPTS', `scale=${ow}:${oh}:flags=lanczos`, 'setsar=1'];
+    const chain = [`fps=${rateStr}`, 'setpts=PTS-STARTPTS', `trim=end_frame=${p.frames}`, 'setpts=PTS-STARTPTS'];
+    const mo = it.clip.motion;
+    if (mo && mo.kind !== 'none' && mo.amount > 0) {
+      // Ken Burns: per-frame scale of the fitted frame, then a fixed-size crop that pans.
+      const itemSec = framesToSeconds(it.end - it.start, r);
+      const off = framesToSeconds(Math.max(it.start, range.start) - it.start, r);
+      const ex = motionExpr(mo, itemSec);
+      const tt = (e: string) => e.replace(/\bt\b/g, `(t+${f6(off)})`);
+      chain.push(
+        `scale=w='trunc(${ow}*${tt(ex.zoom)}/2)*2':h='trunc(${oh}*${tt(ex.zoom)}/2)*2':eval=frame:flags=bicubic`,
+        `crop=${ow}:${oh}:x='(iw-${ow})/2*(1+${tt(ex.panX)})':y='(ih-${oh})/2*(1+${tt(ex.panY)})'`,
+      );
+    } else {
+      chain.push(`scale=${ow}:${oh}:flags=lanczos`);
+    }
+    chain.push('setsar=1');
     const needsAlpha = tr.rotation % 360 !== 0 || tr.opacity < 1 || p.fin > 0 || p.fout > 0;
     if (needsAlpha) chain.push('format=yuva420p');
     if (tr.rotation % 360 !== 0) {
@@ -130,7 +152,9 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
     filters.push(`[${last}][v${idx}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto[${next}]`);
     last = next;
   }
-  filters.push(`[${last}]format=yuv420p,trim=end_frame=${frames}[vout]`);
+  const caps = seq.captions?.filter((c) => c.end > range.start && c.start < range.end) ?? [];
+  const assFilter = caps.length && opts.assFile ? `,ass='${escapeFilterPath(opts.assFile)}'` : '';
+  filters.push(`[${last}]format=yuv420p${assFilter},trim=end_frame=${frames}[vout]`);
 
   // Audio
   const audioLabels: string[] = [];
@@ -237,7 +261,12 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
   const ext = path.extname(job.output) || `.${job.project.exportSettings.container}`;
   const tmp = path.join(path.dirname(job.output), `.${path.basename(job.output, ext)}.rendering${ext}`);
   await fsp.mkdir(path.dirname(job.output), { recursive: true });
-  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder });
+  let assFile: string | undefined;
+  if (seq.captions?.length) {
+    assFile = path.join(path.dirname(job.output), `.${path.basename(job.output, ext)}.captions.ass`);
+    await fsp.writeFile(assFile, captionsToAss(seq, seq.captions, job.range?.start ?? 0), 'utf8');
+  }
+  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder, assFile });
   job.onLog?.(`ffmpeg ${plan.args.length} args, ${plan.frames} frames`);
   try {
     await ffmpeg(plan.args, {
@@ -248,9 +277,11 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
     });
   } catch (e) {
     await fsp.rm(tmp, { force: true });
+    if (assFile) await fsp.rm(assFile, { force: true });
     if (e instanceof CancelledError) throw e;
     throw e;
   }
+  if (assFile) await fsp.rm(assFile, { force: true });
   const result = await verifyExport(tmp, seq, plan.frames);
   if (!result.ok) {
     await fsp.rm(tmp, { force: true });
