@@ -28,7 +28,7 @@ export interface VoiceQuality {
 }
 
 export interface VoiceStep {
-  id: 'highpass' | 'hum' | 'denoise' | 'deess' | 'mud' | 'presence' | 'compress' | 'level';
+  id: 'highpass' | 'hum' | 'denoise' | 'gain' | 'deess' | 'mud' | 'presence' | 'compress' | 'level';
   filter: string;
   reason: string;
 }
@@ -203,7 +203,10 @@ export function planVoiceChain(q: VoiceQuality, opts: Partial<VoiceCleanupOption
     const nf = Math.round(Math.max(-80, Math.min(-20, q.noiseFloorDb)));
     steps.push({ id: 'denoise', filter: `afftdn@dn=nr=${nr}:nf=${nf}:tn=1:rf=${Math.max(-80, nf - 30)}`, reason: `background noise at ${q.noiseFloorDb} dBFS (voice/noise ${q.snrDb} dB): spectral reduction by ${nr} dB` });
   }
-  if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: 'deesser=i=0.5:m=0.5:f=0.5', reason: `strong sibilance (5–9 kHz ${q.sibilanceDb} dB vs the voice band)` });
+  // dynamics (de-esser, compressor) have absolute thresholds: bring the voice to a nominal level first
+  const pre = Math.max(-12, Math.min(24, -18 - q.speechDb));
+  if (Math.abs(pre) >= 1) steps.push({ id: 'gain', filter: `volume=${pre.toFixed(1)}dB`, reason: `voice peaks at ${q.speechDb} dBFS: ${pre > 0 ? '+' : ''}${pre.toFixed(1)} dB before dynamics processing so its thresholds act as designed` });
+  if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: `deesser=i=${q.sibilanceDb > 2 ? 1 : 0.7}:m=0.5:f=0.5`, reason: `strong sibilance (5–9 kHz ${q.sibilanceDb} dB vs the voice band)` });
   if (q.mudDb > 8 && o.strength > 0) steps.push({ id: 'mud', filter: 'equalizer=f=320:t=q:w=1.1:g=-3', reason: `boomy low-mids (200–500 Hz ${q.mudDb} dB above presence)` });
   else if (q.mudDb > -2 && q.mudDb <= 8 && q.sibilanceDb < -18 && o.strength > 0) steps.push({ id: 'presence', filter: 'equalizer=f=3200:t=q:w=1:g=2', reason: 'dull voice (little presence and air): +2 dB at 3.2 kHz' });
   steps.push({ id: 'compress', filter: 'acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:knee=4', reason: 'gentle compression evens the voice level between loud and soft passages' });

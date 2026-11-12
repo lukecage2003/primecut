@@ -62,6 +62,12 @@ app.whenReady().then(() => {
   registerIpc(() => mainWindow, () => (closeAllowed = true));
   registerProductionIpc();
   registerPCoreIpc();
+  const st = process.argv.indexOf('--self-test');
+  if (st >= 0) {
+    // installation check (CI, support): electron . --self-test result.json — no window, exits 0/1
+    void runSelfTest(process.argv[st + 1] ?? path.join(app.getPath('temp'), 'primestone-self-test.json')).then((code) => app.exit(code));
+    return;
+  }
   const cli = process.argv.indexOf('--pcore-render');
   if (cli >= 0) {
     // headless P-CORE render (tests, batch): electron . --pcore-render job.json
@@ -72,8 +78,51 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (!process.argv.includes('--pcore-render')) app.quit();
+  if (!process.argv.includes('--pcore-render') && !process.argv.includes('--self-test')) app.quit();
 });
+
+/** Verifies an installation: bundled FFmpeg runs and encodes, brand and transcription resources are present. */
+async function runSelfTest(outFile: string): Promise<number> {
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const { ffmpeg, ffmpegPaths, ffmpegVersion, ffprobe } = await import('../engine/ffmpeg');
+  const res = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const checks: { name: string; ok: boolean; detail: string }[] = [];
+  const check = async (name: string, fn: () => Promise<string>) => {
+    try {
+      checks.push({ name, ok: true, detail: await fn() });
+    } catch (e) {
+      checks.push({ name, ok: false, detail: (e as Error).message });
+    }
+  };
+  await check('version', async () => app.getVersion());
+  await check('ffmpeg', async () => {
+    const v = await ffmpegVersion();
+    if (!v) throw new Error(`FFmpeg not runnable (${ffmpegPaths().ffmpeg})`);
+    return `${v} · ${ffmpegPaths().ffmpeg}`;
+  });
+  await check('encode', async () => {
+    const out = path.join(os.tmpdir(), `primestone-self-test-${process.pid}.mp4`);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=1', '-f', 'lavfi', '-i', 'sine=f=440:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out]);
+    const { stdout } = await ffprobe(['-v', 'error', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', out]);
+    await fs.rm(out, { force: true });
+    const codecs = stdout.toString().trim().split(/\s+/).join(',');
+    if (!codecs.includes('h264') || !codecs.includes('aac')) throw new Error(`unexpected streams: ${codecs}`);
+    return codecs;
+  });
+  const asset = (rel: string) => (app.isPackaged ? path.join(res, rel) : path.join(res, rel.startsWith('pcore') ? 'assets' : 'tools', rel));
+  await check('pcore-assets', async () => {
+    for (const f of ['pcore/logo-gold.webp', 'pcore/logo-shape.json']) await fs.access(asset(f));
+    return 'logo + silhouette present';
+  });
+  await check('transcription-sidecar', async () => {
+    await fs.access(asset('transcribe/faster_whisper_words.py'));
+    return 'present (engine and model are optional, installed by the user)';
+  });
+  const ok = checks.every((c) => c.ok);
+  await fs.writeFile(outFile, JSON.stringify({ ok, packaged: app.isPackaged, platform: process.platform, arch: process.arch, checks }, null, 2));
+  return ok ? 0 : 1;
+}
 
 async function runPCoreCli(jobFile: string): Promise<number> {
   const fs = await import('node:fs/promises');

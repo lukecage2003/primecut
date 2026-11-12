@@ -12,7 +12,6 @@ import { DEFAULT_VOICE_CLEANUP, levelStep, measureVoiceQuality, planVoiceChain, 
 import type { Interval } from '../production/align';
 import { escapeFilterPath } from './exporter';
 import { ffmpeg } from './ffmpeg';
-import { decodePcm } from './pcore';
 
 export interface VoiceCleanupResult {
   path: string;
@@ -29,13 +28,22 @@ export interface VoiceCleanupResult {
 
 const RATE = 24000;
 
+/** Mono = average of the channels (FFmpeg's -ac 1 downmix can exceed full scale on in-phase stereo). */
+async function decodeMono(file: string, at: number, len: number, signal?: AbortSignal): Promise<Float32Array> {
+  const { stdout } = await ffmpeg(['-v', 'error', '-ss', at.toFixed(3), '-t', len.toFixed(3), '-i', file, '-vn', '-ar', String(RATE), '-ac', '2', '-f', 'f32le', 'pipe:1'], { collectStdout: true, signal });
+  const st = new Float32Array(stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + Math.floor(stdout.byteLength / 8) * 8));
+  const out = new Float32Array(st.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = 0.5 * (st[2 * i]! + st[2 * i + 1]!);
+  return out;
+}
+
 /** Sample up to `count` windows of `len` seconds spread over the file (bounded cost on long files). */
 export async function sampleVoiceQuality(file: string, durationSec: number, signal?: AbortSignal, count = 24, len = 5): Promise<VoiceQuality> {
   const n = Math.max(1, Math.min(count, Math.floor(durationSec / len)));
   const chunks: Float32Array[] = [];
   for (let i = 0; i < n; i++) {
     const at = n === 1 ? 0 : ((durationSec - len) * i) / (n - 1);
-    chunks.push(await decodePcm(file, Math.max(0, at), Math.min(len, durationSec), RATE, signal));
+    chunks.push(await decodeMono(file, Math.max(0, at), Math.min(len, durationSec), signal));
   }
   return measureVoiceQuality(chunks, RATE);
 }
@@ -107,8 +115,9 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   const p1 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-filter_complex', `[0:a]aresample=48000,asplit[a][b];[a]ebur128@orig[o1];[b]${chain},ebur128@proc[o2]`, '-map', '[o1]', '-f', 'null', '-', '-map', '[o2]', '-f', 'null', '-'], { signal });
   // the two summaries are told apart by the filter instance names
   const lufsNamed = (name: string) => {
-    const at = p1.stderr.lastIndexOf(`[${name} @`);
-    return at < 0 ? null : lufsOf(p1.stderr.slice(at, at + 600));
+    const at = p1.stderr.indexOf('Summary:', p1.stderr.lastIndexOf(`[${name} @`));
+    const m = at < 0 ? null : /I:\s+(-?[\d.]+) LUFS/.exec(p1.stderr.slice(at, at + 400));
+    return m && Number(m[1]) > -70 ? Number(m[1]) : null;
   };
   const beforeLufs = lufsNamed('ebur128@orig');
   const processed = lufsNamed('ebur128@proc');
@@ -128,7 +137,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
     extra += o.targetLufs - afterLufs;
     if (extra > 12) break; // do not crush the voice into the limiter
     level = levelStep(processed - extra, o);
-    level.reason += ` (+${extra.toFixed(1)} dB to compensate for the limiter)`;
+    level.reason += ` (${extra >= 0 ? '+' : ''}${extra.toFixed(1)} dB to compensate for the limiter)`;
   }
   await fsp.rename(part, out);
   const all = [...steps, level];
