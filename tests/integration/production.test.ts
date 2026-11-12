@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createProject, framesToSeconds, validateProject } from '../../src/core';
 import { DEFAULT_PREFERENCES, parseScript, alignByPauses, speechFromSilences } from '../../src/production';
 import { analyzeAudio, exportSequence, ffmpeg, importMediaFile, produceVideo } from '../../src/engine';
-import { audioRms, frameColor, tmpDir } from './fixtures';
+import { audioRms, frameColor, makeNarration, tmpDir } from './fixtures';
 
 const SENTENCES = [
   'Spider-Man affronte le Bouffon Vert.',
@@ -24,29 +24,9 @@ const truth: { start: number; end: number }[] = [];
 
 beforeAll(async () => {
   dir = tmpDir('ps-prod-');
-  // narration: 0.6s lead-in silence, sentences separated by 0.8s pauses
-  const parts: string[] = [];
-  let t = 0.6;
-  const silence = (d: number, i: number) => {
-    const f = path.join(dir, `sil${i}.wav`);
-    parts.push(f);
-    return ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=mono`, '-t', String(d), '-ar', '48000', '-ac', '1', f]);
-  };
-  await silence(0.6, 0);
-  for (const [i, s] of SENTENCES.entries()) {
-    const f = path.join(dir, `s${i}.wav`);
-    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `flite=text='${s.replace(/'/g, '')}':voice=slt`, '-af', 'volume=6dB', '-ar', '48000', '-ac', '1', f]);
-    const d = (await importMediaFile(f)).probe.durationSec;
-    parts.push(f);
-    truth.push({ start: t, end: t + d });
-    t += d;
-    await silence(0.8, i + 1);
-    t += 0.8;
-  }
-  const list = path.join(dir, 'list.txt');
-  fs.writeFileSync(list, parts.map((p) => `file '${p}'`).join('\n'));
-  narrationFile = path.join(dir, 'narration.wav');
-  await ffmpeg(['-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c:a', 'pcm_s16le', narrationFile]);
+  const n = await makeNarration(dir, SENTENCES);
+  narrationFile = n.file;
+  truth.push(...n.truth);
   // image library with descriptive names + one sidecar-tagged file
   const lib = path.join(dir, 'library');
   fs.mkdirSync(path.join(lib, 'covers'), { recursive: true });

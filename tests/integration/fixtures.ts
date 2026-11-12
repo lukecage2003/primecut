@@ -51,9 +51,15 @@ export async function makeNarration(dir: string, sentences: string[], pause = 0.
   };
   let t = 0.6;
   await sil(0.6, 0);
+  const tts = await hasFlite();
   for (const [i, s] of sentences.entries()) {
     const f = path.join(dir, `ns${i}.wav`);
-    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `flite=text='${s.replace(/['’:]/g, ' ')}':voice=slt`, '-af', 'volume=6dB', '-ar', '48000', '-ac', '1', f]);
+    if (tts) await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `flite=text='${s.replace(/['’:]/g, ' ')}':voice=slt`, '-af', 'volume=6dB', '-ar', '48000', '-ac', '1', f]);
+    else {
+      // builds without libflite (e.g. Windows): speech-like voiced bursts, ~0.18 s per syllable
+      const d = Math.max(0.6, syllablesOf(s) * 0.18).toFixed(2);
+      await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `sine=f=170:sample_rate=48000:d=${d}`, '-f', 'lavfi', '-i', `anoisesrc=d=${d}:c=pink:a=0.05:r=48000`, '-filter_complex', '[0][1]amix=2:normalize=0,tremolo=f=5.5:d=0.6,volume=4', '-ac', '1', f]);
+    }
     const d = (await importMediaFile(f)).probe.durationSec;
     parts.push(f);
     truth.push({ start: t, end: t + d });
@@ -70,4 +76,18 @@ export async function makeNarration(dir: string, sentences: string[], pause = 0.
 export async function makeImage(file: string, color: string, size = '1200x1800') {
   await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${size},drawbox=c=${color}@0.6:t=fill`, '-frames:v', '1', file]);
   return file;
+}
+
+let fliteCache: boolean | null = null;
+export async function hasFlite(): Promise<boolean> {
+  if (process.env.PRIMESTONE_TEST_NO_FLITE) return false;
+  if (fliteCache === null) {
+    const { stdout } = await ffmpeg(['-filters'], { collectStdout: true }).catch(() => ({ stdout: Buffer.from('') }));
+    fliteCache = / flite /.test(stdout.toString());
+  }
+  return fliteCache;
+}
+
+function syllablesOf(text: string): number {
+  return (text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[aeiouy]+/g) ?? []).length || 1;
 }

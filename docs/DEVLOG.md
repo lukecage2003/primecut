@@ -55,3 +55,6 @@ and export), copy/paste and box selection.
   name tags; Windows CI orphaned Electron helpers (tree kill); harness crash reading a closed app's pid.
 - Environment note: Hugging Face and Wikimedia hosts are blocked by this environment's network
   policy, so the recogniser and web providers could not be exercised here.
+- Windows CI: the BtbN FFmpeg build has no `flite` filter, so the synthetic-narration fixture now
+  falls back to speech-like voiced bursts (same known pauses). Both paths are tested locally
+  (`PRIMESTONE_TEST_NO_FLITE=1`).
