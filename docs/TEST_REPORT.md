@@ -6,11 +6,11 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core + production) | `npx vitest run tests/unit` | ✅ 45 / 45 |
-| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 15 / 15 |
-| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 4 / 4 |
+| Unit (core + production) | `npx vitest run tests/unit` | ✅ 50 / 50 |
+| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 20 / 20 |
+| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 5 / 5 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
-| Windows CI job (GitHub windows-latest) | `.github/workflows/ci.yml` | ✅ unit+integration 35/35 and E2E 2/2 passed on run 1; job failed only at worker teardown (orphaned Electron helpers) → fixed with process-tree kill; re-run pending |
+| GitHub CI (windows-latest + ubuntu) | `.github/workflows/ci.yml` | ✅ runs 3, 7, 8 green on both OS (unit, integration, E2E, NSIS installer); latest run pending at time of writing |
 
 ## What the tests prove
 
@@ -51,6 +51,11 @@ known boundaries): pause detection and ±0.3 s sentence alignment; full pipeline
 with sidecar tags → QC ≥ 80, no errors, correct image per sentence, verified export with audible
 narration, Ken Burns motion (frame difference) and burned subtitles (pixel diff vs. caption-less
 export). E2E: the whole flow through the UI including preview captions and export.
+
+**Visuals & panels:** panel detection on synthetic rasters; window/path maths; real page export
+checked panel by panel; all 7 composition kinds render with exact frame count and visible content;
+voice envelope follows speech/pauses; HUD core measurably brighter while speaking; a production
+with zero images exports a video with no black frames; Inspector re-render through the UI.
 
 ## Not covered yet
 GPU encoders/decoders (no GPU here), Windows-specific paths (covered by CI job once run), long
