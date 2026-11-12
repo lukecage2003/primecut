@@ -110,7 +110,10 @@ export function buildSequence(input: BuildInput): BuildResult {
       const portrait = !!v && v.height > v.width;
       const motion = a.kind === 'image' ? pickMotion(prefs, shots.length + 1, prevMotion, portrait) : 'none';
       prevMotion = motion;
-      v1.clips.push(clip(a.id, a.name, t, len, 0, motion, prefs.motionAmount));
+      const c = clip(a.id, a.name, t, len, 0, motion, prefs.motionAmount);
+      // stills whose aspect differs from the frame (portrait pages, covers) get a blurred fill
+      if (a.kind === 'image' && v && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
+      v1.clips.push(c);
       shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: choice.reasons, text: beat.text });
       recent.push(a.id);
       usage.set(a.id, (usage.get(a.id) ?? 0) + 1);

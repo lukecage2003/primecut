@@ -118,6 +118,8 @@ export interface Clip {
   fadeIn: number;
   fadeOut: number;
   motion: ClipMotion;
+  /** Background behind a clip that does not fill the frame (e.g. portrait comic page). */
+  fill?: 'none' | 'blur';
 }
 
 export type TransitionKind = 'cross-dissolve';

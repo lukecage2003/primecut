@@ -111,6 +111,10 @@ describe('Script-to-Video', () => {
     expect(await audioRms(out, truth[0]!.start + 0.2, truth[0]!.end - 0.2)).toBeGreaterThan(0.02);
     const mid = await frameColor(out, truth[1]!.start + 0.3);
     expect(mid.some((c) => c > 40)).toBe(true);
+    // portrait pages are not pillarboxed: the left edge shows the blurred fill, not black
+    expect(seq.tracks[0]!.clips[0]!.fill).toBe('blur');
+    const { stdout: edge } = await ffmpeg(['-v', 'error', '-ss', '1', '-i', out, '-frames:v', '1', '-vf', 'crop=iw*0.08:ih*0.5:0:ih*0.25,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
+    expect(Math.max(edge[0]!, edge[1]!, edge[2]!)).toBeGreaterThan(60);
     const shot0End = framesToSeconds(shots[0]!.end, seq.settings.frameRate);
     const { stdout: a } = await ffmpeg(['-v', 'error', '-ss', '0.6', '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'], { collectStdout: true });
     const { stdout: b } = await ffmpeg(['-v', 'error', '-ss', (shot0End - 0.2).toFixed(2), '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'], { collectStdout: true });

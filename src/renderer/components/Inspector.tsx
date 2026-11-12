@@ -198,6 +198,23 @@ export function Inspector() {
                     onCommit={(v) => setProps(video.clip.id, { transform: { ...video.clip.transform, [key]: v } }, `Set ${label.toLowerCase()}`, true)}
                   />
                 ))}
+                <div className="insp-row">
+                  <label>Background</label>
+                  <select className="input" value={video.clip.fill ?? 'none'} onChange={(e) => setProps(video.clip.id, { fill: e.target.value as 'none' | 'blur' }, 'Background fill', true)}>
+                    <option value="none">Black</option>
+                    <option value="blur">Blurred image</option>
+                  </select>
+                  <span />
+                </div>
+                <div className="insp-row">
+                  <label>Motion</label>
+                  <select className="input" data-testid="insp-motion" value={video.clip.motion?.kind ?? 'none'} onChange={(e) => setProps(video.clip.id, { motion: { kind: e.target.value as never, amount: e.target.value === 'none' ? 0 : video.clip.motion?.amount || 0.12 } }, 'Camera motion', true)}>
+                    {['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down'].map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                  <span />
+                </div>
                 <button className="btn ghost" onClick={() => setProps(video.clip.id, { transform: { ...DEFAULT_TRANSFORM } }, 'Reset transform', true)}>
                   Reset transform
                 </button>

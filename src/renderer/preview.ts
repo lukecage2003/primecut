@@ -132,6 +132,9 @@ export class PreviewEngine {
       }
       const t = it.sourceIn + framesToSeconds(frame - it.start, rate) * clip.speed;
       const ramp = rampAt(it, frame);
+      if (kind === 'video' && clip.fill === 'blur' && media.kind === 'image') {
+        z = this.background(clip, media, W, H, z, ramp, visible);
+      }
       if (kind === 'video') {
         this.layout(el as HTMLElement, media, clip, W, H, z++, ramp, (frame - it.start + 0.5) / Math.max(1, it.end - it.start));
         el.style.display = 'block';
@@ -194,6 +197,35 @@ export class PreviewEngine {
     } else el.style.clipPath = '';
     el.style.opacity = String(tr.opacity * ramp);
     el.style.zIndex = String(z);
+  }
+
+  /** Blurred cover-scaled copy behind a still that does not fill the frame (matches the exporter). */
+  private background(clip: Clip, media: MediaAsset, W: number, H: number, z: number, ramp: number, visible: Set<string>): number {
+    const key = `bg:${clip.id}`;
+    let l = this.layers.get(key);
+    const src = this.resolveSrc(media);
+    if (!src) return z;
+    if (!l) {
+      const img = document.createElement('img');
+      img.src = src;
+      img.style.objectFit = 'cover';
+      this.stage.appendChild(img);
+      l = { clipId: clip.id, mediaId: media.id, el: img, lastUsed: this.tick };
+      this.layers.set(key, l);
+    }
+    l.lastUsed = this.tick;
+    visible.add(key);
+    const el = l.el as HTMLElement;
+    const s = this.scale;
+    el.style.width = `${W * s}px`;
+    el.style.height = `${H * s}px`;
+    el.style.transform = '';
+    el.style.clipPath = '';
+    el.style.filter = `blur(${(H / 40) * s * 0.8}px) brightness(0.82) saturate(0.85)`;
+    el.style.opacity = String(ramp);
+    el.style.zIndex = String(z);
+    el.style.display = 'block';
+    return z + 1;
   }
 
   /** True once every visible video layer has decoded the requested frame. */

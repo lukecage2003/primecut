@@ -144,10 +144,25 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
       chain.push(`rotate=${a}:ow=rotw(${a}):oh=roth(${a}):c=none`);
     }
     if (tr.opacity < 1) chain.push(`colorchannelmixer=aa=${Math.max(0, tr.opacity).toFixed(4)}`);
-    if (p.fin > 0) chain.push(`fade=t=in:s=0:n=${p.fin}:alpha=1`);
-    if (p.fout > 0) chain.push(`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`);
+    chain.push(...(p.fin > 0 ? [`fade=t=in:s=0:n=${p.fin}:alpha=1`] : []), ...(p.fout > 0 ? [`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`] : []));
     chain.push(`setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`);
-    filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
+    const fades: string[] = [];
+    if (p.fin > 0) fades.push(`fade=t=in:s=0:n=${p.fin}:alpha=1`);
+    if (p.fout > 0) fades.push(`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`);
+    const offset = `setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`;
+    if (it.clip.fill === 'blur' && (ow < W || oh < H)) {
+      // blurred, darkened cover-scaled copy fills the frame behind the fitted picture
+      const head = chain.slice(0, 4).join(',');
+      const rest = chain.slice(4);
+      filters.push(`[${idx}:v]${head},split[s${idx}a][s${idx}b]`);
+      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=${Math.round(H / 40)}:2,eq=brightness=-0.12:saturation=0.85,setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
+      const nb = `ov${ov++}`;
+      filters.push(`[${last}][bg${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nb}]`);
+      last = nb;
+      filters.push(`[s${idx}b]${rest.join(',')}[v${idx}]`);
+    } else {
+      filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
+    }
     const next = `ov${ov++}`;
     filters.push(`[${last}][v${idx}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto[${next}]`);
     last = next;

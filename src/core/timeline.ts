@@ -460,7 +460,7 @@ export function slideClip(seq: Sequence, media: MediaMap, clipId: string, delta:
   return d;
 }
 
-export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform' | 'fadeIn' | 'fadeOut' | 'motion'>>) {
+export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform' | 'fadeIn' | 'fadeOut' | 'motion' | 'fill'>>) {
   const f = findClip(seq, clipId);
   if (!f) throw new EditError('Clip not found');
   assertUnlocked(f.track);
