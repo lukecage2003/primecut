@@ -4,6 +4,8 @@
  */
 import {
   DEFAULT_DUCK,
+  type SfxKind,
+  addTrack,
   type Caption,
   type Clip,
   type MediaAsset,
@@ -25,6 +27,7 @@ import {
   specHash,
 } from '../core';
 import { decideVisual } from './visuals';
+import { beatPacing, speechRates } from './pacing';
 import type { AlignmentResult } from './align';
 import { EntityIndex } from './entities';
 import { type Beat, buildBeats, chooseMedia, indexLibrary, pickMotion, reserveHinted } from './planner';
@@ -116,6 +119,7 @@ export function buildSequence(input: BuildInput): BuildResult {
     shots.push({ start: t, end: t + len, mediaId: asset.id, beat: beat.index, quality: 'generated', reasons: [...why, `motion design: ${dec.reason}`], text: beat.text });
   };
   const reserved = reserveHinted(beats, library);
+  const rates = speechRates(input.script.sentences, input.alignment.sentences);
   const recent: string[] = [];
   const usage = new Map<string, number>();
   let prevMotion: MotionKind | null = null;
@@ -127,7 +131,9 @@ export function buildSequence(input: BuildInput): BuildResult {
     const bEnd = bi === beats.length - 1 ? endFrame : F(beats[bi + 1]!.start);
     const sectionEntities = new Set(beats.filter((b) => b.section === beat.section).flatMap((b) => b.entities.map((e) => e.entityId).filter((x): x is string => !!x)));
     let t = bStart;
-    const pieces = Math.max(1, Math.ceil((bEnd - bStart) / maxF));
+    const pace = beatPacing(beat, input.script.sentences, rates);
+    const paceF = Math.max(minF, Math.round(maxF * pace.shotFactor));
+    const pieces = Math.max(1, Math.ceil((bEnd - bStart) / paceF));
     const target = Math.ceil((bEnd - bStart) / pieces);
     let guard = 0;
     while (t < bEnd && guard++ < 50) {
@@ -154,7 +160,7 @@ export function buildSequence(input: BuildInput): BuildResult {
       const portrait = !!v && v.height > v.width;
       const motion = a.kind === 'image' ? pickMotion(prefs, shots.length + 1, prevMotion, portrait) : 'none';
       prevMotion = motion;
-      const c = clip(a.id, a.name, t, len, 0, motion, prefs.motionAmount);
+      const c = clip(a.id, a.name, t, len, 0, motion, prefs.motionAmount * (0.85 + 0.3 * pace.intensity));
       // comic pages with detected panels are read panel by panel when the shot allows it
       const nPanels = a.panels ? Math.min(a.panels.length, Math.floor(framesToSeconds(len, rate) / prefs.secondsPerPanel)) : 0;
       if (prefs.panelReading && a.kind === 'image' && v && a.panels && a.panels.length >= 2 && nPanels >= 2) {
@@ -164,7 +170,7 @@ export function buildSequence(input: BuildInput): BuildResult {
       // stills whose aspect differs from the frame (portrait pages, covers) get a blurred fill
       if (a.kind === 'image' && v && c.motion.kind !== 'panels' && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
       v1.clips.push(c);
-      shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: choice.reasons, text: beat.text });
+      shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: pace.label === 'neutral' ? choice.reasons : [...choice.reasons, `pacing: ${pace.label}`], text: beat.text });
       recent.push(a.id);
       usage.set(a.id, (usage.get(a.id) ?? 0) + 1);
       t += len;
@@ -277,6 +283,56 @@ export function buildSequence(input: BuildInput): BuildResult {
     add(s.start, s.end, `VISUEL MANQUANT\n${need || 'illustration'}`, 'placeholder');
   }
   seq.captions = captions.sort((a, b) => a.start - b.start);
+
+  // sound design: whoosh on section changes, soft impact under section titles (procedural, local)
+  if (prefs.sfx) {
+    const cuts: number[] = [];
+    for (let i = 0; i + 1 < v1.clips.length; i++) {
+      const sl = shots.find((x) => x.start === v1.clips[i]!.start);
+      const sr = shots.find((x) => x.start === v1.clips[i + 1]!.start);
+      if (sl && sr && beats[sl.beat]!.section !== beats[sr.beat]!.section) cuts.push(v1.clips[i + 1]!.start);
+    }
+    const sfxAssets = new Map<string, MediaAsset>();
+    const sfxAsset = (kind: SfxKind, variant: number, dur: number): MediaAsset => {
+      const key = `${kind}-${variant}`;
+      let a = sfxAssets.get(key);
+      if (!a) {
+        a = {
+          id: newId(),
+          name: `SFX · ${kind} ${variant + 1}`,
+          kind: 'audio',
+          path: '',
+          fingerprint: { size: 0, mtimeMs: 0, partialHash: `sfx-${key}-${dur}` },
+          probe: { durationSec: dur, container: 'wav', audio: { codec: 'pcm_s16le', sampleRate: 48000, channels: 2 } },
+          importedAt: new Date().toISOString(),
+          rights: { usage: 'owned', source: 'primestone-sfx', checkedAt: new Date().toISOString(), note: 'Sound effect synthesised locally' },
+          sfx: { kind, seed: variant + 1, durationSec: dur },
+        } as MediaAsset;
+        sfxAssets.set(key, a);
+        generated.push(a);
+      }
+      return a;
+    };
+    const events: { at: number; kind: SfxKind; dur: number; lead: number }[] = [];
+    for (const c of cuts) events.push({ at: c, kind: 'whoosh', dur: 1.1, lead: 0.6 });
+    for (const t of captions.filter((c) => c.style === 'title')) events.push({ at: t.start, kind: 'impact', dur: 1.6, lead: 0.02 });
+    events.sort((a, b) => a.at - b.at);
+    const a3Id = addTrack(seq, 'audio');
+    const a3 = seq.tracks.find((t) => t.id === a3Id)!;
+    a3.name = 'SFX';
+    let lastEnd = -Infinity;
+    events.forEach((e, i) => {
+      const st = Math.max(0, e.at - F(e.lead));
+      const len = Math.min(F(e.dur), endFrame - st);
+      if (st < lastEnd || len < 2) return; // never stack effects
+      const a = sfxAsset(e.kind, i % 3, e.dur);
+      const c = clip(a.id, a.name, st, len);
+      c.gainDb = prefs.sfxDb ?? -12;
+      a3.clips.push(c);
+      lastEnd = st + len;
+    });
+    if (!a3.clips.length) seq.tracks = seq.tracks.filter((t) => t.id !== a3Id);
+  }
   normalizeSequence(seq, Object.fromEntries([...input.library, ...generated, input.narration, ...(input.music ? [input.music] : [])].map((m) => [m.id, m])));
   void framesToSeconds;
   return { sequence: seq, beats, shots, generated };

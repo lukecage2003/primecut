@@ -169,7 +169,7 @@ describe('timeline construction', () => {
     for (let i = 0; i + 1 < v1.clips.length; i++) expect(v1.clips[i]!.start + v1.clips[i]!.duration).toBe(v1.clips[i + 1]!.start);
     expect(r.shots.every((s) => s.quality === 'generated')).toBe(true);
     expect(r.sequence.captions.some((c) => c.style === 'placeholder')).toBe(false);
-    const kinds = r.generated.map((g) => g.generator!.kind);
+    const kinds = r.generated.filter((g) => g.generator).map((g) => g.generator!.kind);
     expect(kinds).toContain('character-card'); // Spider-Man / Bouffon Vert introduced
     for (let i = 0; i + 1 < kinds.length; i++) expect(kinds[i]).not.toBe(kinds[i + 1]); // no identical consecutive compositions
     const g0 = r.generated[0]!.generator!;
@@ -256,5 +256,22 @@ describe('motion & captions helpers', () => {
     const ass = captionsToAss(s);
     expect(ass).toContain('PlayResX: 1920');
     expect(ass).toContain('Dialogue: 1,0:00:01.00,0:00:02.00,subtitle,,0,0,0,,Ligne (un)\\NLigne deux');
+  });
+});
+
+describe('pacing', () => {
+  it('cuts faster on intense passages and lets explanations breathe', async () => {
+    const { beatPacing, parseScript } = await import('../../src/production');
+    const sc = parseScript('La bataille éclate ! Thor tombe. Loki trahit tout le monde !\n\nPour comprendre cette idée, il faut expliquer le principe de la continuité Marvel et son origine dans les années soixante.');
+    const rates = { bySentence: new Map<number, number>(), median: 5 };
+    const beat = (idx: number[]) => ({ index: 0, section: 0, sentenceIndexes: idx, start: 0, end: 5, text: idx.map((i) => sc.sentences[i]!.text).join(' '), entities: [], hints: [], keywords: [], sources: [], onScreen: [] });
+    const intense = beatPacing(beat([0, 1, 2]), sc.sentences, rates);
+    const calm = beatPacing(beat([3]), sc.sentences, rates);
+    expect(intense.label).toBe('intense');
+    expect(calm.label).toBe('calm');
+    expect(intense.shotFactor).toBeLessThan(calm.shotFactor);
+    // a narrator speeding up raises intensity
+    const fast = beatPacing(beat([3]), sc.sentences, { bySentence: new Map([[3, 7.5]]), median: 5 });
+    expect(fast.intensity).toBeGreaterThan(calm.intensity);
   });
 });

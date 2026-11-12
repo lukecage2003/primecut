@@ -26,6 +26,8 @@ import { loadDictionary } from './scriptFile';
 import { analyzeAudio } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
 import { renderGenerator } from './generators';
+import { renderSfx } from './sfx';
+import { probeMedia } from './probe';
 import { ffmpeg } from './ffmpeg';
 import { detectPanels } from '../core';
 
@@ -169,9 +171,10 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const rate = `${settings.frameRate.num}/${settings.frameRate.den}`;
   const worker = async () => {
     for (let g = toRender.shift(); g; g = toRender.shift()) {
-      progress(0.65 + 0.15 * (done / Math.max(1, built.generated.length)), `Rendering motion design (${done + 1}/${built.generated.length})`);
-      g.path = await renderGenerator(g.generator!, { width: settings.width, height: settings.height, rate, audioPath: narration.path, cacheDir, signal });
+      progress(0.65 + 0.15 * (done / Math.max(1, built.generated.length)), `Rendering motion design & sound (${done + 1}/${built.generated.length})`);
+      g.path = g.sfx ? await renderSfx(g.sfx, cacheDir, signal) : await renderGenerator(g.generator!, { width: settings.width, height: settings.height, rate, audioPath: narration.path, cacheDir, signal });
       g.fingerprint = await fingerprintFile(g.path);
+      if (g.sfx) g.probe = (await probeMedia(g.path, signal)).probe;
       g.relativePath = path.relative(req.projectDir, g.path);
       done++;
     }

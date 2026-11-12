@@ -73,6 +73,8 @@ export interface MediaAsset {
   rights?: MediaRights;
   /** Procedural composition rendered by the engine (file at `path` is the cached render). */
   generator?: import('./generators').GeneratorSpec;
+  /** Procedural sound effect rendered locally (Primestone SFX). */
+  sfx?: SfxSpec;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
@@ -340,3 +342,11 @@ export function findClip(seq: Sequence, clipId: string): { track: Track; clip: C
 
 /** Image stills have no intrinsic duration; this is the default length when placed. */
 export const DEFAULT_STILL_SECONDS = 5;
+
+export type SfxKind = 'whoosh' | 'impact' | 'tick';
+
+export interface SfxSpec {
+  kind: SfxKind;
+  seed: number;
+  durationSec: number;
+}

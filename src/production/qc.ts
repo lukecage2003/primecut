@@ -109,6 +109,7 @@ export function measureStyle(seq: Sequence): EditStyle {
     dissolves: v1.transitions.length,
     cuts,
     musicRelativeDb: music && narr ? music.gainDb - narr.gainDb : null,
+    sfxClips: seq.production ? seq.tracks.filter((t) => t.kind === 'audio').slice(2).reduce((n, t) => n + t.clips.length, 0) : null,
     duckDepthDb: music ? (seq.tracks.filter((t) => t.kind === 'audio')[1]?.duck?.depthDb ?? 0) : null,
     subtitles: seq.captions.some((c) => c.style === 'subtitle'),
   };

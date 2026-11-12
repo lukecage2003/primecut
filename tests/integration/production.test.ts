@@ -62,7 +62,15 @@ describe('Script-to-Video', () => {
       { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } },
       (_, m) => stages.push(m),
     );
-    expect(stages).toEqual(['Analysing narration', 'Synchronising text and voice', 'Indexing media', 'Building the edit', 'Quality control', expect.stringMatching(/QC score/)]);
+    expect(stages.filter((x) => !x.startsWith('Rendering'))).toEqual(['Analysing narration', 'Synchronising text and voice', 'Indexing media', 'Building the edit', 'Quality control', expect.stringMatching(/QC score/)]);
+    // sound design: procedural SFX on their own track, rendered as real audio files
+    const sfxTrack = res.sequence.tracks.find((t) => t.name === 'SFX');
+    expect(sfxTrack?.clips.length).toBeGreaterThan(0);
+    for (const c of sfxTrack!.clips) {
+      const a = res.newMedia.find((m) => m.id === c.mediaId)!;
+      expect(a.sfx).toBeTruthy();
+      expect(a.probe.audio?.sampleRate).toBe(48000);
+    }
     const seq = res.sequence;
     expect(res.report.alignment.confidence).toBe(1);
     expect(res.report.entities).toEqual(expect.arrayContaining(['Spider-Man', 'Green Goblin', 'Venom']));
@@ -169,7 +177,7 @@ describe('faceless production with no illustrations at all', () => {
       expect(fs.existsSync(m.path)).toBe(true);
       project.media[m.id] = m;
     }
-    expect(new Set(res.newMedia.map((m) => m.generator!.kind)).size).toBeGreaterThanOrEqual(2);
+    expect(new Set(res.newMedia.filter((m) => m.generator).map((m) => m.generator!.kind)).size).toBeGreaterThanOrEqual(2);
     project.sequences[seq.id] = seq;
     project.activeSequenceId = seq.id;
     expect(validateProject(project)).toEqual([]);

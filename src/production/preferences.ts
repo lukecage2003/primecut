@@ -35,6 +35,10 @@ export interface ProductionPreferences {
   /** Extra attenuation of the music under the voice (automatic ducking, dB, ≤ 0; 0 = off).
    *  Between sentences the music rises by this amount. */
   duckDepthDb: number;
+  /** Procedural sound effects (whoosh on section changes, impact under titles). */
+  sfx: boolean;
+  /** SFX clip gain (dB). */
+  sfxDb: number;
   narrationLufs: number;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
@@ -58,6 +62,8 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   lowerThirds: true,
   musicRelativeDb: -20,
   duckDepthDb: -8,
+  sfx: true,
+  sfxDb: -10,
   narrationLufs: -16,
   avoidRepeatWithin: 4,
 };
@@ -70,6 +76,8 @@ export interface EditStyle {
   dissolves: number;
   cuts: number;
   musicRelativeDb: number | null;
+  /** Number of SFX clips kept (null = SFX track absent). */
+  sfxClips?: number | null;
   /** Ducking depth on the music track (null = no music / no ducking). */
   duckDepthDb?: number | null;
   subtitles: boolean;
@@ -128,6 +136,10 @@ export function adaptPreferences(prefs: ProductionPreferences, generated: EditSt
   if (edited.duckDepthDb != null && generated.duckDepthDb != null && Math.abs(edited.duckDepthDb - generated.duckDepthDb) > 0.5) {
     next.duckDepthDb = clamp(edited.duckDepthDb, -24, 0);
     changes.push(`music ducking ${(prefs.duckDepthDb ?? -8).toFixed(1)} dB → ${next.duckDepthDb.toFixed(1)} dB`);
+  }
+  if (generated.sfxClips && edited.sfxClips != null && edited.sfxClips < generated.sfxClips * 0.3) {
+    next.sfx = false;
+    changes.push('sound effects off (most were removed)');
   }
   if (edited.subtitles !== generated.subtitles) {
     next.subtitles = edited.subtitles;

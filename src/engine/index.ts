@@ -8,3 +8,6 @@ export * from './hardware';
 export * from './audioAnalysis';
 export * from './production';
 export * from './generators';
+export * from './sfx';
+export * from './transcribe';
+export * from './scriptFile';
