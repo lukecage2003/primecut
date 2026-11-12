@@ -125,8 +125,9 @@ export function measureVoiceQuality(chunks: Float32Array[], rate: number): Voice
   }
   if (!frames.length) return { noiseFloorDb: -90, speechDb: -90, snrDb: 0, humHz: null, humDb: 0, rumbleShare: 0, sibilanceDb: -60, mudDb: 0, clipShare: 0, analysedSec: samples / rate };
   const levels = frames.map((f) => f.rms);
-  const floor = pct(levels, 0.1);
-  const speech = pct(levels, 0.9);
+  // −120 dBFS is below any real recording (24-bit noise floor): digital silence reads as −120, not −200
+  const floor = Math.max(-120, pct(levels, 0.1));
+  const speech = Math.max(-120, pct(levels, 0.9));
   const quiet = frames.filter((f) => f.rms <= floor + 4);
   const loud = frames.filter((f) => f.rms >= speech - 10);
   // hum: a narrow peak at f0 (and harmonics) above the neighbouring bins, in the pauses

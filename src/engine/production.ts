@@ -24,7 +24,7 @@ import {
   isCanonicalScript,
 } from '../production';
 import { loadDictionary } from './scriptFile';
-import { analyzeAudio } from './audioAnalysis';
+import { analyzeAudio, analyzeNarration } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
 import { cleanVoice } from './voice';
 import type { VoiceQuality } from '../production/voiceChain';
@@ -166,7 +166,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   if (!script.sentences.length) throw new Error('The script contains no narration text');
 
   progress(0.05, 'Analysing narration');
-  let na = await analyzeAudio(original.path, { signal });
+  let na = await analyzeNarration(original.path, { signal });
   // voice cleanup → a derived copy used by the edit; the recording itself is never modified
   let voice: VoiceReport | undefined;
   const voiceNotes: string[] = [];

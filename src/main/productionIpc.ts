@@ -11,7 +11,7 @@ import type { Project } from '../core/model';
 import { produceVideo, projectPaths, atomicWrite, renderGenerator, fingerprintFile } from '../engine';
 import type { GeneratorSpec } from '../core/generators';
 import { DEFAULT_PREFERENCES, type ProductionPreferences, adaptPreferences, type EditStyle } from '../production';
-import type { PreferencesState, ProductionInputs, ProductionOutcome } from '../shared/api';
+import { FORMAT_SIZES, type PreferencesState, type ProductionInputs, type ProductionOutcome } from '../shared/api';
 import { orchestrator } from './ipc';
 
 const prefsFile = () => path.join(app.getPath('userData'), 'production-preferences.json');
@@ -75,7 +75,7 @@ export function registerProductionIpc() {
           }
         }
         const r = await produceVideo(
-          { project, projectDir: path.dirname(projectFile), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
+          { project, projectDir: path.dirname(projectFile), ...(inputs.format ? { settings: FORMAT_SIZES[inputs.format], name: `Auto v${Object.values(project.sequences).filter((x) => x.production).length + 1} · ${inputs.format}` } : {}), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
           (f, m) => {
             const base = transcript ? 0.31 : 0;
             c.progress(base + (1 - base) * f, m);

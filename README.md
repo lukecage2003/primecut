@@ -3,9 +3,14 @@
 A local-first, free, professional desktop video editor — Windows first.
 No account, no subscription, no cloud: your media never leaves your machine.
 
-> **Status: v0.1.0 — Phase 1 (vertical slice) complete and tested end-to-end.**
-> This is an early editor, not yet a Premiere Pro replacement. See
-> [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for exactly what works and what does not.
+> **Status: v0.6.0** — Script-to-Video (script + narration → finished faceless video), voice
+> cleanup, P-CORE, SRT/VTT, multi-format versions, Windows installer tested in CI (silent install,
+> self-test, uninstall). Not everything is done: see [RAPPORT_FINAL.md](RAPPORT_FINAL.md) and
+> [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
+
+**Guides (français)** : [Installation Windows](INSTALLATION_WINDOWS.md) ·
+[Démarrage rapide](DEMARRAGE_RAPIDE.md) · [Guide d'utilisation](GUIDE_UTILISATEUR.md) ·
+[Rapport de livraison](RAPPORT_FINAL.md)
 
 ## What works today (tested)
 

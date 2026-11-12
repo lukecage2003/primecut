@@ -198,3 +198,21 @@ describe('faceless production with no illustrations at all', () => {
     }
   }, 300000);
 });
+
+describe('multi-format versions', () => {
+  for (const [label, width, height] of [['4:5', 1080, 1350], ['1:1', 1080, 1080]] as const) {
+    it(`generates a ${label} version re-composed for that frame (no gaps, compositions rendered at that size)`, async () => {
+      const project = createProject('Fmt', { width: 1920, height: 1080, frameRate: { num: 30, den: 1 } });
+      const narr = await importMediaFile(narrationFile, dir);
+      project.media[narr.id] = narr;
+      const res = await produceVideo({ project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 }, settings: { width, height }, name: `Auto · ${label}` });
+      expect(res.sequence.settings).toMatchObject({ width, height });
+      expect(res.sequence.production!.qcIssues.filter((i) => i.code === 'gap' || i.code === 'missing-visual')).toEqual([]);
+      for (const g of res.newMedia.filter((m) => m.generator)) {
+        const { stdout } = await ffmpeg(['-v', 'error', '-i', g.path, '-frames:v', '1', '-f', 'null', '-'], { collectStdout: true }).then(() => ({ stdout: 'ok' }));
+        expect(stdout).toBe('ok');
+        expect(g.probe.video).toMatchObject({ width, height });
+      }
+    }, 240000);
+  }
+});

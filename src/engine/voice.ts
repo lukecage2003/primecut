@@ -112,7 +112,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   }
   await fsp.mkdir(dir, { recursive: true });
   // pass 1: loudness of the original and of the processed voice (one decode)
-  const p1 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-filter_complex', `[0:a]aresample=48000,asplit[a][b];[a]ebur128@orig[o1];[b]${chain},ebur128@proc[o2]`, '-map', '[o1]', '-f', 'null', '-', '-map', '[o2]', '-f', 'null', '-'], { signal });
+  const p1 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-filter_complex', `[0:a]aresample=48000,asplit[a][b];[a]ebur128@orig=framelog=verbose[o1];[b]${chain},ebur128@proc=framelog=verbose[o2]`, '-map', '[o1]', '-f', 'null', '-', '-map', '[o2]', '-f', 'null', '-'], { signal });
   // the two summaries are told apart by the filter instance names
   const lufsNamed = (name: string) => {
     const at = p1.stderr.indexOf('Summary:', p1.stderr.lastIndexOf(`[${name} @`));
@@ -131,7 +131,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   let afterLufs: number | null = null;
   let extra = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const p2 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-af', `aresample=48000,${chain},${level.filter}${align},ebur128`, '-ac', String(Math.min(2, media.probe.audio?.channels ?? 1)), '-ar', '48000', '-c:a', 'pcm_s24le', part], { signal });
+    const p2 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-af', `aresample=48000,${chain},${level.filter}${align},ebur128=framelog=verbose`, '-ac', String(Math.min(2, media.probe.audio?.channels ?? 1)), '-ar', '48000', '-c:a', 'pcm_s24le', part], { signal });
     afterLufs = lufsOf(p2.stderr);
     if (processed == null || afterLufs == null || Math.abs(o.targetLufs - afterLufs) <= 1) break;
     extra += o.targetLufs - afterLufs;

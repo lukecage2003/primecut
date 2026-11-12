@@ -6,8 +6,9 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core + production + P-CORE + voice + comic refs) | `npx vitest run tests/unit` | ✅ 80 / 80 |
-| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 24 / 24 |
+| Unit | `npx vitest run tests/unit` | ✅ 84 / 84 |
+| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 27 / 27 |
+| Windows installer (CI, clean runner) | silent install → `--self-test` of the installed app → silent uninstall | ✅ run 21: 228.1 MB, FFmpeg 8.1.3, H.264+AAC encode, resources present, uninstalled cleanly |
 | End-to-end (Electron UI, Xvfb, software WebGL) | `npx playwright test` | ✅ 6 / 6 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
 | GitHub CI (windows-latest + ubuntu) | `.github/workflows/ci.yml` | ✅ runs 3, 7–10 green on both OS (unit, integration, E2E, NSIS installer); runs for the v0.5 commits: see Actions |
@@ -108,3 +109,37 @@ noise, 50 Hz hum, 18 Hz rumble) the integration test checks: hum detected at the
 loudness within 1 LU of the target, envelope cross-correlation lag 0 ± 10 ms, original file
 byte-identical, second run served from cache. A clean recording gets no denoise/hum steps.
 **Not yet measured on a real microphone recording** (test spidey).
+
+## v0.6 — real narration and a measurement bug (2026-11-12)
+
+**Real narration** (*Midnight Spider-Man*, the user's MP3 "Session sans titre 1 mixage final",
+6 min 08, stereo 48 kHz). The script was reconstructed from the transcript (the real script was not
+provided), so sync accuracy cannot be measured against ground truth on this file.
+- Transcription (faster-whisper small, CPU): 937 words in 117 s (0.32× RT), mean word prob. 0.91.
+- Voice cleanup: −35.5 → −16.1 LUFS, sibilance 4 → −4.9 dB, no clipping, no denoise applied (pauses
+  are digital silence), 13 s. Findings fixed on this file: dynamics thresholds are absolute (pre-gain
+  added), the processed-loudness parser read the wrong summary (3 renders → 1), mono analysis of
+  stereo overstated peaks.
+- Outtake at the end (348.5–367.6 s, off-script speech) detected and left out of the edit.
+- Full production, faceless (no images), 1080p: 55 shots (all procedural), QC 100, export 316 s for
+  348.7 s (0.91×), verified, −15.9 LUFS / −1.5 dBFS TP, no black frames, peak RSS 155 MB.
+- P-CORE on this voice before/after calibration: emphasis 40 % → 13 % of the time, state changes
+  165 → 74 per minute.
+
+**Bug found with it: analysis results truncated on long files.** `silencedetect` and `blackdetect`
+results share stderr with `ebur128`, which logged one line per 100 ms; the process runner kept only
+the last 100 kB of stderr, so on narrations longer than ~4 min the early pauses (and early black
+frames in campaign measurements) were dropped. Fixed (`ebur128 framelog=verbose`, 8–16 MB stderr
+retention) with a regression test (7-min file: pauses found from the start). Effect on the 66-min
+documentary against exact ground truth (same transcript, alignment only):
+
+| | before | after |
+|---|---|---|
+| median sentence-start error | 58 ms | **6 ms** |
+| p90 | 381 ms | **15 ms** |
+| ≤ 250 ms | 84.8 % | **94.5 %** |
+
+The earlier "no black frames" result for the documentary was measured with the truncated runner and
+was re-checked on the full 66-min file with the fixed runner: **0 black segments** (blackdetect d=0.4 s, pix_th 0.06) — the result stands. Pause detection also adapts to quiet recordings now (gate =
+loudness − 20 dB below −22 LUFS; unchanged for normal levels).
+

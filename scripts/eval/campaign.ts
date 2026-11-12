@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createProject, framesToSeconds, type MediaAsset } from '../../src/core';
 import { DEFAULT_PREFERENCES, EntityIndex, SEED_KNOWLEDGE, parseScript, scriptEntities } from '../../src/production';
-import { analyzeAudio, exportSequence, ffmpeg, importMediaFile, produceVideo, readScriptDocument, transcribe } from '../../src/engine';
+import { analyzeNarration, exportSequence, ffmpeg, importMediaFile, produceVideo, readScriptDocument, transcribe } from '../../src/engine';
 
 const args = Object.fromEntries(
   process.argv
@@ -71,7 +71,7 @@ async function makeLibrary(dir: string, markdown: string, mode: string): Promise
 }
 
 async function measure(file: string) {
-  const r = await ffmpeg(['-v', 'info', '-nostats', '-i', file, '-vf', 'blackdetect=d=0.4:pix_th=0.06', '-af', 'ebur128=peak=true', '-f', 'null', '-'], {}).catch((e) => e);
+  const r = await ffmpeg(['-v', 'info', '-nostats', '-i', file, '-vf', 'blackdetect=d=0.4:pix_th=0.06', '-af', 'ebur128=peak=true:framelog=verbose', '-f', 'null', '-'], {}).catch((e) => e);
   const err = String((r as { stderr?: string }).stderr ?? '');
   const blacks = [...err.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g)].map((m) => ({ start: +m[1]!, end: +m[2]! }));
   const I = /I:\s+([-\d.]+) LUFS/.exec(err.split('Summary:').pop() ?? '')?.[1];
@@ -161,7 +161,7 @@ async function measure(file: string) {
   const errs = truth.map((tr) => Math.abs((byIdx.get(tr.index)?.start ?? NaN) - tr.start)).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
   if (!truth.length) {
     // proxy: distance from each sentence start to the nearest speech onset (silence → speech)
-    const na = await analyzeAudio(wav!);
+    const na = await analyzeNarration(wav!);
     const onsets = na.silences.map((x) => x.end);
     for (const x of res.timings!) errs.push(Math.min(...onsets.map((o) => Math.abs(o - x.start)), Infinity));
     errs.sort((a, b) => a - b);

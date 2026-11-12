@@ -12,7 +12,7 @@ export interface AudioAnalysis {
 export async function analyzeAudio(file: string, opts: { noiseDb?: number; minSilence?: number; signal?: AbortSignal } = {}): Promise<AudioAnalysis> {
   const noise = opts.noiseDb ?? -35;
   const minSil = opts.minSilence ?? 0.18;
-  const { stderr } = await ffmpeg(['-v', 'info', '-i', file, '-vn', '-af', `silencedetect=noise=${noise}dB:d=${minSil},ebur128=peak=true`, '-f', 'null', '-'], { signal: opts.signal });
+  const { stderr } = await ffmpeg(['-v', 'info', '-i', file, '-vn', '-af', `silencedetect=noise=${noise}dB:d=${minSil},ebur128=peak=true:framelog=verbose`, '-f', 'null', '-'], { signal: opts.signal });
   const silences: Interval[] = [];
   let open: number | null = null;
   for (const m of stderr.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
@@ -38,3 +38,17 @@ export async function analyzeAudio(file: string, opts: { noiseDb?: number; minSi
     truePeakDb: peak && peak[1] !== '-inf' ? Number(peak[1]) : null,
   };
 }
+
+/** Silence threshold for a recording of this loudness: −35 dB suits a normal voice, a quiet one needs a lower gate. */
+export function silenceThresholdDb(integratedLufs: number | null): number {
+  // normal levels keep the historical −35 dB gate (validated productions do not change)
+  return integratedLufs == null || integratedLufs >= -22 ? -35 : Math.max(-60, integratedLufs - 20);
+}
+
+/** Analysis whose pause detection adapts to the recording level (quiet narrations are not read as silence). */
+export async function analyzeNarration(file: string, opts: { signal?: AbortSignal } = {}): Promise<AudioAnalysis> {
+  const a = await analyzeAudio(file, opts);
+  const thr = silenceThresholdDb(a.integratedLufs);
+  return thr < -35 ? analyzeAudio(file, { ...opts, noiseDb: thr }) : a;
+}
+

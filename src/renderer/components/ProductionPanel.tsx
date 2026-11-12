@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_PREFERENCES, type ProductionPreferences } from '../../production/preferences';
 import { parseScript } from '../../production/script';
-import type { PreferencesState } from '../../shared/api';
+import type { OutputFormat, PreferencesState } from '../../shared/api';
 import { api } from '../api';
 import { errorText, importPaths, runProduction, savedProductionInputs } from '../actions';
 import { store, toast, useEditor, useStore } from '../store';
@@ -14,6 +14,7 @@ export function ProductionPanel() {
   const [script, setScript] = useState(saved?.script ?? '');
   const [narration, setNarration] = useState(saved?.narrationMediaId ?? '');
   const [music, setMusic] = useState<string>(saved?.musicMediaId ?? '');
+  const [format, setFormat] = useState<OutputFormat | ''>('');
   const [folders, setFolders] = useState<string[]>(saved?.mediaFolders ?? []);
   const [prefsState, setPrefsState] = useState<PreferencesState | null>(null);
   const [prefs, setPrefs] = useState<ProductionPreferences>(DEFAULT_PREFERENCES);
@@ -123,6 +124,17 @@ export function ProductionPanel() {
               <span className="val">{Math.round(prefs.motionAmount * 100)}%</span>
             </div>
             <div className="insp-row">
+              <label>Format</label>
+              <select className="input" data-testid="format-select" value={format} onChange={(e) => setFormat(e.target.value as OutputFormat | '')} title="Each format is a new version, re-composed for that frame (framing, layouts, subtitles, P-CORE placement)">
+                <option value="">Project format</option>
+                <option value="16:9">16:9 · YouTube</option>
+                <option value="9:16">9:16 · Shorts / TikTok / Reels</option>
+                <option value="1:1">1:1 · square</option>
+                <option value="4:5">4:5 · feed portrait</option>
+              </select>
+              <span />
+            </div>
+            <div className="insp-row">
               <label>Visual style</label>
               <select className="input" value={prefs.visualStyle} onChange={(e) => set('visualStyle', e.target.value as never)}>
                 <option value="gold">Primestone gold</option>
@@ -154,6 +166,31 @@ export function ProductionPanel() {
                 </label>
               ))}
             </div>
+            {prefsState && prefsState.history.length > 1 && (
+              <details data-testid="prefs-history">
+                <summary className="tiny">Preference history (v{prefs.version}) — what was learned, and restore an earlier version</summary>
+                {[...prefsState.history].reverse().slice(0, 8).map((h) => (
+                  <div key={h.version} className="row tiny" style={{ gap: 8 }}>
+                    <span style={{ flex: 1 }}>
+                      v{h.version} · {new Date(h.at).toLocaleString()} · {h.changes.join(' · ') || 'initial'}
+                    </span>
+                    {h.version !== prefsState.current.version && (
+                      <button
+                        className="btn ghost"
+                        style={{ height: 20, padding: '0 6px', fontSize: 11 }}
+                        onClick={async () => {
+                          const st = await api.production.revertPreferences(h.version);
+                          setPrefsState(st);
+                          setPrefs(st.current);
+                        }}
+                      >
+                        Restore
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </details>
+            )}
           </div>
         </div>
         {task && (
@@ -180,7 +217,7 @@ export function ProductionPanel() {
             disabled={busy || !narration || parsed.sentences.length === 0}
             onClick={async () => {
               if (JSON.stringify(prefs) !== JSON.stringify(prefsState?.current)) setPrefsState(await api.production.setPreferences(prefs, 'adjusted in the production panel'));
-              const ok = await runProduction({ script, narrationMediaId: narration, musicMediaId: music || null, mediaFolders: folders }, prefs);
+              const ok = await runProduction({ script, narrationMediaId: narration, musicMediaId: music || null, mediaFolders: folders, ...(format ? { format } : {}) }, prefs);
               if (ok) store.set({ overlay: null });
             }}
           >

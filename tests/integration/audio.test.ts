@@ -184,3 +184,17 @@ describe('voice cleanup', () => {
     expect((await cleanVoice(media, path.join(dir, 'Cache'), { targetLufs: -16, silences: na.silences })).cached).toBe(true);
   });
 });
+
+describe('pause detection on long narrations', () => {
+  it('finds the pauses at the start of a 7-minute recording, not only the last ones', async () => {
+    const { analyzeAudio } = await import('../../src/engine');
+    const dir = tmpDir();
+    const f = path.join(dir, 'long.wav');
+    // 2 s of tone, 0.5 s of silence, repeated for 420 s
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.3*sin(2*PI*220*t)*lt(mod(t,2.5),2)':s=16000:d=420", f]);
+    const a = await analyzeAudio(f);
+    expect(a.silences.length).toBeGreaterThanOrEqual(160);
+    expect(a.silences[0]!.start).toBeLessThan(3);
+    expect(a.integratedLufs).not.toBeNull();
+  }, 120000);
+});

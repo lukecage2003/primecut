@@ -84,7 +84,8 @@ export function run(bin: string, args: string[], opts: RunOptions = {}): Promise
     });
     child.stderr.on('data', (d: Buffer) => {
       stderr += d.toString('utf8');
-      if (stderr.length > 200_000) stderr = stderr.slice(-100_000);
+      // analysis filters report results on stderr: keep plenty (a long narration has thousands of pauses)
+      if (stderr.length > 16_000_000) stderr = stderr.slice(-8_000_000);
     });
     child.on('error', (e) => {
       opts.signal?.removeEventListener('abort', onAbort);

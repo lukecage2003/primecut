@@ -69,7 +69,12 @@ export interface ProductionInputs {
   narrationMediaId: string;
   musicMediaId: string | null;
   mediaFolders: string[];
+  /** Frame format of the generated version; omitted = the project's own format. */
+  format?: OutputFormat;
 }
+
+export type OutputFormat = '16:9' | '9:16' | '1:1' | '4:5';
+export const FORMAT_SIZES: Record<OutputFormat, { width: number; height: number }> = { '16:9': { width: 1920, height: 1080 }, '9:16': { width: 1080, height: 1920 }, '1:1': { width: 1080, height: 1080 }, '4:5': { width: 1080, height: 1350 } };
 
 export interface ProductionOutcome {
   sequence: Sequence;

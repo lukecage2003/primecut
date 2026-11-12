@@ -63,3 +63,14 @@ describe('quiet recordings', () => {
     expect(steps.findIndex((s) => s.id === 'gain')).toBeLessThan(steps.findIndex((s) => s.id === 'compress'));
   });
 });
+
+describe('pause detection threshold', () => {
+  it('follows the loudness of the recording', async () => {
+    const { silenceThresholdDb } = await import('../../src/engine/audioAnalysis');
+    expect(silenceThresholdDb(-16)).toBe(-35);
+    expect(silenceThresholdDb(-12)).toBe(-35);
+    expect(silenceThresholdDb(-35.5)).toBe(-55.5);
+    expect(silenceThresholdDb(-70)).toBe(-60);
+    expect(silenceThresholdDb(null)).toBe(-35);
+  });
+});
