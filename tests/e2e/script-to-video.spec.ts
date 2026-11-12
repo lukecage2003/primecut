@@ -41,6 +41,12 @@ test('script + narration + folder → generated video', async () => {
   await expect(page.getByTestId('production-report')).toContainText('spider-man-bouffon-vert.png');
   const score = Number((await page.getByTestId('qc-score').innerText()).split('/')[0]);
   expect(score).toBeGreaterThanOrEqual(70);
+  // the narration was cleaned into a derived copy; switching back to the original is one undoable edit
+  await expect(page.getByTestId('voice-report')).toContainText('LUFS');
+  await page.getByTestId('voice-use-original').click();
+  await expect(page.getByTestId('voice-use-clean')).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('voice-use-original')).toBeVisible();
   // preview shows a subtitle during the first sentence
   await page.keyboard.press('Home');
   for (let i = 0; i < 4; i++) await page.keyboard.press('Shift+ArrowRight');

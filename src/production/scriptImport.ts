@@ -286,7 +286,7 @@ export function importProductionScript(source: string, opts: { transcriptVocabul
   const out: string[] = [];
   const notes: string[] = [];
   // end matter (sources list, checklists, production tables) is never narrated
-  const END_MATTER = /^(?:sources?\b|références|references|bibliographie|fiche\b|réalisation\b|realisation\b|annexes?\b|crédits|credits|checklist|notes? de production|plan de montage|découpage|decoupage)/i;
+  const END_MATTER = /^(?:dossiers?\s+(?:de\s+)?sources?\b|liste\s+des\s+(?:sources|r[ée]f[ée]rences)|sources?\b|références|references|bibliographie|fiche\b|réalisation\b|realisation\b|annexes?\b|crédits|credits|checklist|notes? de production|plan de montage|découpage|decoupage)/i;
   let inEndMatter = false;
   const endMatter: string[] = [];
   blocks.forEach((b, i) => {
@@ -308,8 +308,18 @@ export function importProductionScript(source: string, opts: { transcriptVocabul
       out.push(`## ${b.text.replace(/\s+/g, ' ')}`);
       return;
     }
+    // a source block that announces the reference list ("DOSSIER SOURCE — toutes les références
+    // ci-dessous…") opens the end matter even when the PDF glued it to a directive
+    if (!inEndMatter && b.type !== 'para' && b.kind === 'source' && END_MATTER.test(b.text.replace(/[[\]]/g, '').trim()) && /dossier|toutes\s*les\s*r[ée]f|ci-?dessous|liste/i.test(b.text)) inEndMatter = true;
+    // a run of bibliography entries ("Titre #12-15 (2008) - Auteur…") is end matter, never narration
+    if (!inEndMatter && b.type === 'para' && isReferenceEntry(b.text) && blocks.slice(i + 1, i + 3).filter((x) => x.type === 'para' && isReferenceEntry(x.text)).length >= 2) inEndMatter = true;
     if (inEndMatter) {
       endMatter.push(b.text);
+      return;
+    }
+    // a reference entry right after a source directive continues that list: kept as a source
+    if (b.type === 'para' && isReferenceEntry(b.text) && out.at(-1)?.startsWith('[SOURCE:')) {
+      out.push(`[SOURCE: ${b.text.replace(/[[\]]/g, '')}]`);
       return;
     }
     if (b.type === 'para') {
@@ -338,4 +348,9 @@ export function importProductionScript(source: string, opts: { transcriptVocabul
 /** True when the text is already in Primestone Markdown (headings `#` or bracket directives). */
 export function isCanonicalScript(text: string): boolean {
   return /^\s*#{1,3}\s|\[(?:VISUEL|VISUAL|IMAGE|TITRE|TITLE|SOURCE|ECRAN|ÉCRAN|PAUSE|NOTE|SON)\b/im.test(text) && !/\b\d+\s*\/\s*\d+\s*$/m.test(text);
+}
+
+/** "Batman #676-681 (2008) - Grant Morrison, …" / "JLA #43-46 (2000) - « Tower of Babel »" */
+export function isReferenceEntry(text: string): boolean {
+  return /^(?:[^.!?]|\.(?!\s+[A-ZÀ-Ý])){1,80}#\s?\d+(?:[-–]\d+)?[^.!?]{0,40}\(\d{4}(?:[-–]\d{2,4})?\)\s*[-–—:]\s*\S/.test(text.trim());
 }

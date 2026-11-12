@@ -64,6 +64,13 @@ Then in **Settings → Local transcription**: tick *Use local transcription*, se
 the model, press **Check**. The narration is transcribed on your PC, never uploaded; the result is
 cached in the project.
 
+**Voice.** "Clean the voice" (on by default in Script-to-Video) measures your recording and only
+applies what it needs: rumble/DC filter, mains hum removal (50 or 60 Hz, when present), noise
+reduction learned from one of your pauses (when the background is audible), de-essing/EQ (when
+measured), gentle compression and loudness to the narration target. Your file is never changed: the
+edit uses a cleaned copy, and Inspector → Voice shows each step with its reason, the before/after
+measurements, and "Use the original recording" (undoable).
+
 **Sound.** Music placed with the generator is lowered under the voice automatically (Inspector →
 select the music clip → *Lower this track under* / *Ducking depth*). Procedural whooshes/impacts go
 on the `SFX` track; delete them or lower the track if you don't want them (*Learn from my edits*

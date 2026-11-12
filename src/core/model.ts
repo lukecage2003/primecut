@@ -79,6 +79,8 @@ export interface MediaAsset {
   pcore?: PCoreClipSpec;
   /** Procedural sound effect rendered locally (Primestone SFX). */
   sfx?: SfxSpec;
+  /** Processed copy of another media item (the original file is never modified). */
+  derived?: { from: string; kind: 'voice-cleanup'; steps: string[] };
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
@@ -233,6 +235,24 @@ export interface ProductionMeta {
   /** Style measured at generation time (baseline for preference learning). */
   style: Record<string, unknown>;
   narrationMediaId: string;
+  /** Narration cleanup applied to this version (the clips can be switched back to the original). */
+  voice?: ProductionVoice;
+}
+
+export interface VoiceMetrics {
+  noiseFloorDb: number;
+  snrDb: number;
+  humHz: number | null;
+  lufs: number | null;
+}
+
+export interface ProductionVoice {
+  mediaId: string;
+  originalId: string;
+  steps: { id: string; reason: string }[];
+  before: VoiceMetrics;
+  after: VoiceMetrics;
+  latencyMs?: number;
 }
 
 export interface ExportSettings {

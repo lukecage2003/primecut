@@ -88,3 +88,25 @@ describe('production script import', () => {
     expect(parseScript(imp.markdown).sentences).toHaveLength(3);
   });
 });
+
+describe('reference lists are never narrated', () => {
+  it('recognises bibliography entries', async () => {
+    const { isReferenceEntry } = await import('../../src/production');
+    expect(isReferenceEntry('Batman #676-681 (2008) - Grant Morrison, Tony Daniel et collaborateurs.')).toBe(true);
+    expect(isReferenceEntry('New Avengers (vol. 3) #30 (2015) — Jonathan Hickman, Kev Walker.')).toBe(true);
+    expect(isReferenceEntry('Dans Batman #492-497 (1993), Bane ne se contente pas d’attendre.')).toBe(false);
+    expect(isReferenceEntry('Batman est préparé. Il lit #12 (2008) - plus tard.')).toBe(false);
+  });
+  it('a "DOSSIER SOURCE" block and a run of entries go to the annexes', () => {
+    const src = `LE MYTHE DU PREP TIME\n\n1. INTRODUCTION\n\nBatman prépare tout. Mais il peut être surpris.\n\nSOURCE : DOSSIER SOURCE Toutes les références ci-dessous sont des comics utilisés dans le script.\n\nBatman #676-681 (2008) - Grant Morrison, Tony Daniel et collaborateurs. Batman R.I.P.\n\nJLA #43-46 (2000) - « Tower of Babel »; les contingences de Batman.\n\nBatman #612 (2003) - Jeph Loeb, Jim Lee et collaborateurs. Hush.\n`;
+    const r = importProductionScript(src, { dictionary: dict });
+    const s = parseScript(r.markdown);
+    expect(s.sentences.map((x) => x.text).join(' ')).not.toMatch(/Morrison|Tower of Babel|Jeph Loeb/);
+    expect(s.sentences.length).toBe(2);
+  });
+  it('entries right after a source directive stay sources', () => {
+    const src = `TITRE\n\n1. FIN\n\nEt si tout était faux ?\n\nSOURCES : Secret Wars #1 (1984) — Jim Shooter.\n\nSecret Wars #10 (1985) — Jim Shooter, Mike Zeck. Doom vole le pouvoir.\n`;
+    const s = parseScript(importProductionScript(src, { dictionary: dict }).markdown);
+    expect(s.sentences.map((x) => x.text)).toEqual(['Et si tout était faux ?']);
+  });
+});

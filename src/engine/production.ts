@@ -26,6 +26,8 @@ import {
 import { loadDictionary } from './scriptFile';
 import { analyzeAudio } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
+import { cleanVoice } from './voice';
+import type { VoiceQuality } from '../production/voiceChain';
 import { renderGenerator } from './generators';
 import { renderSfx } from './sfx';
 import { probeMedia } from './probe';
@@ -136,19 +138,53 @@ export interface ProductionResult {
     /** Set when the script was converted from a production document. */
     scriptImport?: { title: string | null; sections: number; repairs: number };
     transcription?: string;
+    /** Narration cleanup: steps chosen from measurements, before/after metrics. */
+    voice?: VoiceReport;
   };
 }
 
+export interface VoiceReport {
+  mediaId: string;
+  originalId: string;
+  steps: { id: string; reason: string }[];
+  before: VoiceQuality;
+  after: VoiceQuality;
+  beforeLufs: number | null;
+  afterLufs: number | null;
+  seconds: number;
+  cached: boolean;
+  latencyMs?: number;
+}
+
 export async function produceVideo(req: ProductionRequest, progress: (f: number, msg: string) => void = () => undefined, signal?: AbortSignal): Promise<ProductionResult> {
-  const narration = req.project.media[req.narrationMediaId];
-  if (!narration?.probe.audio) throw new Error('Narration audio not found in the project');
+  const original = req.project.media[req.narrationMediaId];
+  if (!original?.probe.audio) throw new Error('Narration audio not found in the project');
+  let narration: MediaAsset = original;
   // real production scripts (PDF/Docs exports) are converted; Primestone Markdown is used as is
   const imported = isCanonicalScript(req.script) ? null : importProductionScript(req.script, { dictionary: loadDictionary(), transcriptVocabulary: req.transcript?.map((w) => w.text) });
   const script = parseScript(imported ? imported.markdown : req.script);
   if (!script.sentences.length) throw new Error('The script contains no narration text');
 
   progress(0.05, 'Analysing narration');
-  const na = await analyzeAudio(narration.path, { signal });
+  let na = await analyzeAudio(original.path, { signal });
+  // voice cleanup → a derived copy used by the edit; the recording itself is never modified
+  let voice: VoiceReport | undefined;
+  const voiceNotes: string[] = [];
+  if (req.prefs.voiceCleanup !== false) {
+    progress(0.1, 'Cleaning the voice');
+    try {
+      const vc = await cleanVoice(original, path.join(req.projectDir, 'Cache'), { targetLufs: req.prefs.narrationLufs, silences: na.silences }, signal);
+      const asset = await importMediaFile(vc.path, req.projectDir, signal);
+      asset.name = `${original.name.replace(/\.[^.]+$/, '')} · voix nettoyée.wav`;
+      asset.derived = { from: original.id, kind: 'voice-cleanup', steps: vc.steps.map((s) => s.id) };
+      narration = asset;
+      na = { ...(await analyzeAudio(asset.path, { signal })), silences: na.silences };
+      voice = { mediaId: asset.id, originalId: original.id, latencyMs: vc.latencyMs, steps: vc.steps.map((s) => ({ id: s.id, reason: s.reason })), before: vc.before, after: vc.after, beforeLufs: vc.beforeLufs, afterLufs: vc.afterLufs, seconds: vc.seconds, cached: vc.cached };
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      voiceNotes.push(`Voice cleanup skipped: ${(e as Error).message}`);
+    }
+  }
   const music = req.musicMediaId ? req.project.media[req.musicMediaId] : null;
   const ma = music ? await analyzeAudio(music.path, { signal }) : null;
 
@@ -161,7 +197,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   progress(0.35, 'Indexing media');
   const known = new Set(Object.values(req.project.media).map((m) => m.path));
   const scan = await scanMediaFolders(req.mediaFolders, req.projectDir, known, signal);
-  const library = [...Object.values(req.project.media).filter((m) => m.id !== narration.id && m.id !== music?.id), ...scan.assets];
+  const library = [...Object.values(req.project.media).filter((m) => m.id !== narration.id && m.id !== original.id && m.id !== music?.id && !m.derived), ...scan.assets];
 
   progress(0.6, 'Building the edit');
   const base = Object.values(req.project.sequences)[0]?.settings;
@@ -216,7 +252,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   }
 
   progress(0.8, 'Quality control');
-  const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated].map((a) => [a.id, a])) };
+  const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated, narration].map((a) => [a.id, a])) };
   const endFrame = secondsToFrames(narration.probe.durationSec + 1, settings.frameRate);
   const fixes = autoFix(built.sequence, mediaMap, endFrame);
   built.sequence.production = {
@@ -229,6 +265,14 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     shots: built.shots,
     style: {},
     narrationMediaId: narration.id,
+    voice: voice && {
+      mediaId: voice.mediaId,
+      originalId: voice.originalId,
+      steps: voice.steps,
+      before: { noiseFloorDb: voice.before.noiseFloorDb, snrDb: voice.before.snrDb, humHz: voice.before.humHz, lufs: voice.beforeLufs },
+      after: { noiseFloorDb: voice.after.noiseFloorDb, snrDb: voice.after.snrDb, humHz: voice.after.humHz, lufs: voice.afterLufs },
+      latencyMs: voice.latencyMs,
+    },
   };
   const qc = runQc(built.sequence, mediaMap, req.prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame });
   built.sequence.production.qcScore = qc.score;
@@ -241,8 +285,8 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   void framesToSeconds;
   return {
     sequence: built.sequence,
-    newMedia: [...scan.assets, ...built.generated].filter((a) => used.has(a.id)),
+    newMedia: [...scan.assets, ...built.generated, ...(narration !== original ? [narration] : [])].filter((a) => used.has(a.id)),
     timings: alignment.sentences.map((a) => ({ index: a.index, start: a.start, end: a.end, text: script.sentences[a.index]?.text ?? '' })),
-    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...pcoreNotes], entities, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
+    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...voiceNotes, ...pcoreNotes], entities, voice, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

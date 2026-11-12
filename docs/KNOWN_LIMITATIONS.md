@@ -50,6 +50,14 @@ Honest list; each item has a planned phase.
 - Hardware encoders (NVENC on the RTX 3050) and CUDA transcription have never run on real hardware
   here: use "Save diagnostics report" in Settings to measure them on the target PC.
 
+## Voice cleanup (v0.6)
+- Tuned and verified on synthetic voices only (espeak, generated harmonics + noise); thresholds may
+  need adjusting on a real microphone recording. Denoising is FFmpeg's afftdn (spectral): good on
+  steady noise (fans, hiss, hum), weak on non-stationary noise (traffic, keyboard, reverb). No
+  de-reverberation, no AI denoiser (it would require downloading a model).
+- The cleaned copy is regenerated per production settings (cached by content + chain); it is stored
+  in the project's `Cache/voice` folder (≈ 8.6 MB per minute, 24-bit WAV).
+
 ## P-CORE (v0.6)
 - Rendered offline (cached video clips), not live in the viewer; reaction changes need a re-render.
 - Measured only with software WebGL (no GPU here): ≈ 3 fps at 1080². GPU speed on the RTX 3050 unknown.

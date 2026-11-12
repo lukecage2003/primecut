@@ -144,6 +144,8 @@ export function ProductionPanel() {
                   ['lowerThirds', 'Name tags'],
                   ['proceduralVisuals', 'Motion design when no image'],
                   ['panelReading', 'Read pages panel by panel'],
+                  ['voiceCleanup', 'Clean the voice (noise, hum, level)'],
+                  ['sfx', 'Sound effects'],
                 ] as const
               ).map(([k, l]) => (
                 <label key={k} className="row" style={{ gap: 6 }}>

@@ -42,6 +42,8 @@ export interface ProductionPreferences {
   /** SFX clip gain (dB). */
   sfxDb: number;
   narrationLufs: number;
+  /** Clean the narration (hum, rumble, noise, sibilance, level) into a derived copy, from measurements. */
+  voiceCleanup: boolean;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
 }
@@ -68,6 +70,7 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   sfx: true,
   sfxDb: -10,
   narrationLufs: -16,
+  voiceCleanup: true,
   avoidRepeatWithin: 4,
 };
 

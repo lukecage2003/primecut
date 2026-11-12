@@ -271,6 +271,7 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
     } else if (b === 1) i--;
     else j--;
   }
+  dropImplausibleMatches(match, rec, script.map((x) => x.w));
   // word timings: matched → recognised times; unmatched → interpolated between neighbours
   const times: { start: number; end: number; estimated: boolean }[] = new Array(n);
   for (let k = 0; k < n; k++) if (match[k] !== null) times[k] = { start: rec[match[k]!]!.start, end: rec[match[k]!]!.end, estimated: false };
@@ -332,6 +333,39 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
   }
   if (speech?.length) snapToSpeech(out, speech);
   return { sentences: out, method: 'transcript', confidence: out.length ? anchored / out.length : 0 };
+}
+
+/**
+ * A lone matched word (no matched neighbour) is weak evidence: when the recogniser drops a passage,
+ * a frequent word ("Batman") can be paired with another occurrence several seconds away. Such a
+ * match is kept only if its time agrees with what the surrounding reliable runs predict.
+ */
+export function dropImplausibleMatches(match: (number | null)[], rec: { start: number }[], words?: string[], tolSec = 2.5) {
+  const n = match.length;
+  // a lone word that also occurs nearby in the script could belong to any of those occurrences
+  const ambiguous = (k: number) => {
+    if (!words) return false;
+    for (let d = -40; d <= 40; d++) if (d && words[k + d] === words[k]) return true;
+    return false;
+  };
+  const reliable = (k: number) => match[k] !== null && ((k > 0 && match[k - 1] !== null && match[k - 1] === match[k]! - 1) || (k + 1 < n && match[k + 1] !== null && match[k + 1] === match[k]! + 1));
+  const rel: number[] = [];
+  for (let k = 0; k < n; k++) if (reliable(k)) rel.push(k);
+  let r = 0;
+  for (let k = 0; k < n; k++) {
+    if (match[k] === null || reliable(k)) continue;
+    while (r < rel.length && rel[r]! < k) r++;
+    const a = r > 0 ? rel[r - 1]! : -1;
+    const b = r < rel.length ? rel[r]! : -1;
+    if (a < 0 || b < 0) continue; // edges: no prediction
+    const ta = rec[match[a]!]!.start;
+    const tb = rec[match[b]!]!.start;
+    const expected = ta + ((tb - ta) * (k - a)) / (b - a);
+    const dev = Math.abs(rec[match[k]!]!.start - expected);
+    // the prediction is uncertain over long gaps: allow ±tol plus 15 % of the gap
+    // (a word that also occurs nearby could be any of its occurrences: tighter tolerance)
+    if (dev > (ambiguous(k) ? 1.5 + 0.05 * (tb - ta) : tolSec + 0.15 * (tb - ta))) match[k] = null;
+  }
 }
 
 /** Monotonic path script-index → recognised-index through trigrams that are unique on both sides. */

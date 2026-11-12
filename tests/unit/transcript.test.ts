@@ -62,3 +62,20 @@ describe('transcript alignment', () => {
     ]);
   });
 });
+
+describe('implausible lone matches', () => {
+  it('drops a frequent word paired with a far occurrence when the recogniser skipped a passage', async () => {
+    const { dropImplausibleMatches } = await import('../../src/production');
+    // script words 0..29; recognised words: two reliable runs, and a lone "batman" 9 s late
+    const words = Array.from({ length: 30 }, (_, k) => (k === 12 || k === 20 ? 'batman' : `w${k}`));
+    const rec = Array.from({ length: 40 }, (_, j) => ({ start: j * 0.4 }));
+    const match: (number | null)[] = new Array(30).fill(null);
+    for (let k = 0; k < 5; k++) match[k] = k; // 0..1.6 s
+    for (let k = 25; k < 30; k++) match[k] = k + 5; // 12..13.6 s
+    match[12] = 32; // "batman" of word 20 heard at 12.8 s, given to word 12 (expected ≈ 6.4 s)
+    match[22] = 26; // a unique word at the right time stays
+    dropImplausibleMatches(match, rec, words);
+    expect(match[12]).toBeNull();
+    expect(match[22]).toBe(26);
+  });
+});

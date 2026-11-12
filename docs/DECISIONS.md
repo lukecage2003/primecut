@@ -102,3 +102,18 @@ every frame is a pure function of parameters, read back as straight-alpha RGBA a
 FFmpeg, then the file is decoded again to prove its alpha. VP9-alpha WebM is the timeline format
 (small, plays with transparency in the preview, decoded with libvpx in exports); ProRes 4444 /
 QuickTime Animation / PNG are offered for Premiere and other tools.
+
+## ADR-018 — Voice cleanup from measurements, as a derived file
+
+The narration is measured on ≤ 24 sampled windows (noise floor and speech level above 80 Hz, exact
+50/60 Hz tone power in the pauses, rumble share, sibilance, low-mid balance, clipping) and a chain of
+stock FFmpeg filters is chosen from those numbers: high-pass (always; 90 Hz when rumble), hum notches
+(only when found), afftdn with a noise profile learned in the earliest real pause (only when the floor
+is audible), de-esser / EQ (only when measured), gentle compression, then gain + limiter computed from
+the measured loudness of the processed chain (re-measured and corrected when the limiter eats
+loudness). The chain's latency is measured with an impulse at run time (it differs between FFmpeg
+builds) and trimmed, so word timings stay valid. The result is a cached WAV registered as a derived
+media item (`derived.from`): the recording is never modified and the Inspector switches the clips
+back in one undoable edit. Rejected: RNNoise (`arnndn`) — needs a model file Primestone would have to
+download; `loudnorm` dynamic mode — alters dynamics and its look-ahead complicates sync.
+

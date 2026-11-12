@@ -85,6 +85,7 @@ export interface ProductionOutcome {
     entities: string[];
     scriptImport?: { title: string | null; sections: number; repairs: number };
     transcription?: string;
+    voice?: { steps: { id: string; reason: string }[]; afterLufs: number | null };
   };
 }
 

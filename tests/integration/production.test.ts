@@ -62,7 +62,7 @@ describe('Script-to-Video', () => {
       { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } },
       (_, m) => stages.push(m),
     );
-    expect(stages.filter((x) => !x.startsWith('Rendering'))).toEqual(['Analysing narration', 'Synchronising text and voice', 'Indexing media', 'Building the edit', 'Quality control', expect.stringMatching(/QC score/)]);
+    expect(stages.filter((x) => !x.startsWith('Rendering'))).toEqual(['Analysing narration', 'Cleaning the voice', 'Synchronising text and voice', 'Indexing media', 'Building the edit', 'Quality control', expect.stringMatching(/QC score/)]);
     // sound design: procedural SFX on their own track, rendered as real audio files
     const sfxTrack = res.sequence.tracks.find((t) => t.name === 'SFX');
     expect(sfxTrack?.clips.length).toBeGreaterThan(0);
@@ -71,6 +71,14 @@ describe('Script-to-Video', () => {
       expect(a.sfx).toBeTruthy();
       expect(a.probe.audio?.sampleRate).toBe(48000);
     }
+    // voice cleanup: the edit plays a derived copy; the recording is untouched and still in the project
+    const v = res.report.voice!;
+    expect(v.originalId).toBe(narr.id);
+    const cleaned = res.newMedia.find((m) => m.id === v.mediaId)!;
+    expect(cleaned.derived).toEqual(expect.objectContaining({ from: narr.id, kind: 'voice-cleanup' }));
+    expect(res.sequence.tracks.some((t) => t.clips.some((c) => c.mediaId === cleaned.id))).toBe(true);
+    expect(res.sequence.tracks.some((t) => t.clips.some((c) => c.mediaId === narr.id))).toBe(false);
+    expect(Math.abs((v.afterLufs ?? 0) - DEFAULT_PREFERENCES.narrationLufs)).toBeLessThanOrEqual(1);
     const seq = res.sequence;
     expect(res.report.alignment.confidence).toBe(1);
     expect(res.report.entities).toEqual(expect.arrayContaining(['Spider-Man', 'Green Goblin', 'Venom']));

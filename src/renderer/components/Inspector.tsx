@@ -267,6 +267,7 @@ function ProductionReport() {
         <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Regenerate…</button>
         <button className="btn ghost" onClick={() => void learnFromEdits()} title="Adapt pacing, motion and transitions to how you edited this version">Learn from my edits</button>
       </div>
+      {p.voice && <VoiceReport />}
       {p.qcIssues.length > 0 && <div className="section-title">Quality control</div>}
       {p.qcIssues.map((i, k) => (
         <div key={k} className={`issue ${i.severity}`} onClick={() => i.frame !== undefined && setPlayhead(i.frame)}>
@@ -280,6 +281,60 @@ function ProductionReport() {
           <div className="tiny">{s.reasons.join(' · ')}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Narration cleanup of this version: what was done and why, measured before/after, reversible. */
+function VoiceReport() {
+  const seq = useEditor((e) => currentSequence(e));
+  const v = seq.production!.voice!;
+  const usingClean = seq.tracks.some((t) => t.clips.some((c) => c.mediaId === v.mediaId));
+  const swap = (from: string, to: string, label: string) =>
+    edit(label, (s) => {
+      for (const t of s.tracks) for (const c of t.clips) if (c.mediaId === from) c.mediaId = to;
+      if (s.production) s.production.narrationMediaId = to;
+    });
+  const fmt = (x: number | null) => (x == null ? '—' : x.toFixed(1));
+  return (
+    <div data-testid="voice-report">
+      <div className="section-title">Voice</div>
+      <dl className="kv">
+        <dt>Noise floor</dt>
+        <dd>
+          {fmt(v.before.noiseFloorDb)} → {fmt(v.after.noiseFloorDb)} dBFS
+        </dd>
+        <dt>Voice / noise</dt>
+        <dd>
+          {fmt(v.before.snrDb)} → {fmt(v.after.snrDb)} dB
+        </dd>
+        <dt>Loudness</dt>
+        <dd>
+          {fmt(v.before.lufs)} → {fmt(v.after.lufs)} LUFS
+        </dd>
+        {v.before.humHz && (
+          <>
+            <dt>Hum</dt>
+            <dd>{v.before.humHz} Hz removed</dd>
+          </>
+        )}
+      </dl>
+      {v.steps.map((s) => (
+        <div key={s.id} className="tiny" title={s.reason}>
+          ✓ {s.reason}
+        </div>
+      ))}
+      <div className="row" style={{ marginTop: 6 }}>
+        {usingClean ? (
+          <button className="btn ghost" data-testid="voice-use-original" onClick={() => swap(v.mediaId, v.originalId, 'Use original narration')}>
+            Use the original recording
+          </button>
+        ) : (
+          <button className="btn ghost" data-testid="voice-use-clean" onClick={() => swap(v.originalId, v.mediaId, 'Use cleaned narration')}>
+            Use the cleaned voice
+          </button>
+        )}
+      </div>
     </div>
   );
 }

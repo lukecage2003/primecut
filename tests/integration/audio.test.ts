@@ -133,3 +133,54 @@ describe('transparent overlays', () => {
     expect(r2).toBeLessThan(60);
   });
 });
+
+describe('voice cleanup', () => {
+  it('chooses its steps from measurements, removes hum/rumble/noise, keeps timing, never touches the original', async () => {
+    const { cleanVoice } = await import('../../src/engine/voice');
+    const { analyzeAudio } = await import('../../src/engine');
+    const dir = tmpDir();
+    const raw = path.join(dir, 'raw-voice.wav');
+    // voice-like: harmonics 180·k Hz with syllable modulation, phrases 1–4 s and 5.5–9 s; pauses elsewhere
+    const voice = "aevalsrc='(0.25*sin(2*PI*180*t)+0.2*sin(2*PI*360*t)+0.12*sin(2*PI*720*t)+0.06*sin(2*PI*1440*t)+0.03*sin(2*PI*2880*t))*(0.55+0.45*sin(2*PI*4*t))*(between(t,1,4)+between(t,5.5,9))':s=48000:d=10";
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', voice, '-f', 'lavfi', '-i', 'anoisesrc=d=10:c=white:r=48000:a=0.012:seed=5', '-f', 'lavfi', '-i', 'sine=f=50:r=48000:d=10', '-f', 'lavfi', '-i', 'sine=f=18:r=48000:d=10',
+      '-filter_complex', '[2:a]volume=0.25[h];[3:a]volume=1.2[r];[0:a][1:a][h][r]amix=inputs=4:normalize=0', '-ar', '48000', raw]);
+    const before = fs.readFileSync(raw);
+    const media = await importMediaFile(raw, dir);
+    const na = await analyzeAudio(raw, { noiseDb: -30 });
+    const r = await cleanVoice(media, path.join(dir, 'Cache'), { targetLufs: -16, silences: na.silences });
+    const ids = r.steps.map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(['highpass', 'hum', 'denoise', 'compress', 'level']));
+    expect(r.before.humHz).toBe(50);
+    expect(r.after.snrDb).toBeGreaterThan(r.before.snrDb + 8);
+    expect(r.after.rumbleShare).toBeLessThan(r.before.rumbleShare / 10);
+    expect(Math.abs(r.afterLufs! - -16)).toBeLessThanOrEqual(1);
+    // hum in a pause, relative to the voice band in a phrase: at least 15 dB lower than before
+    const rel = async (f: string) => (await bandRmsDb(f, 4.3, 5.2, 50)) - (await bandRmsDb(f, 2, 3.5, 360));
+    expect((await rel(r.path)) - (await rel(raw))).toBeLessThan(-15);
+    // timing preserved: envelope cross-correlation peaks at lag 0 (±10 ms)
+    const env = async (f: string) => {
+      const { stdout } = await ffmpeg(['-v', 'error', '-i', f, '-af', 'highpass=f=150,lowpass=f=3000', '-ac', '1', '-ar', '8000', '-f', 's16le', 'pipe:1'], { collectStdout: true });
+      const s = new Int16Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.byteLength / 2));
+      const out: number[] = [];
+      for (let i = 0; i + 80 <= s.length; i += 80) {
+        let a = 0;
+        for (let k = 0; k < 80; k++) a += Math.abs(s[i + k]!);
+        out.push(a / 80);
+      }
+      return out;
+    };
+    const a = await env(raw);
+    const b = await env(r.path);
+    const corr = (lag: number) => {
+      let acc = 0;
+      for (let i = 50; i < Math.min(a.length, b.length) - 50; i++) acc += a[i]! * b[i + lag]!;
+      return acc;
+    };
+    const lags = Array.from({ length: 41 }, (_, k) => k - 20);
+    const best = lags.reduce((x, y) => (corr(y) > corr(x) ? y : x));
+    expect(Math.abs(best)).toBeLessThanOrEqual(1);
+    // the recording is untouched; a second run is served from the cache
+    expect(fs.readFileSync(raw).equals(before)).toBe(true);
+    expect((await cleanVoice(media, path.join(dir, 'Cache'), { targetLufs: -16, silences: na.silences })).cached).toBe(true);
+  });
+});

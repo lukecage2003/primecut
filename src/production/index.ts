@@ -10,3 +10,4 @@ export * from './qc';
 export * from './visuals';
 export * from './scriptImport';
 export * from './pacing';
+export * from './voiceChain';
