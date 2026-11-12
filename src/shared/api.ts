@@ -2,7 +2,9 @@
  * The typed contract between the renderer (UI) and the main process (engine).
  * The renderer never touches the filesystem or spawns processes directly.
  */
-import type { MediaAsset, Project } from '../core/model';
+import type { MediaAsset, Project, Sequence } from '../core/model';
+import type { ProductionPreferences } from '../production/preferences';
+import type { EditStyle } from '../production/preferences';
 import type { HardwareReport, PerformanceProfile } from '../engine/hardware';
 import type { MediaResolution } from '../engine/projectStore';
 import type { TaskInfo } from '../engine/tasks';
@@ -54,6 +56,33 @@ export interface ExportOutcome {
   height: number;
 }
 
+export interface ProductionInputs {
+  script: string;
+  narrationMediaId: string;
+  musicMediaId: string | null;
+  mediaFolders: string[];
+}
+
+export interface ProductionOutcome {
+  sequence: Sequence;
+  newMedia: MediaAsset[];
+  report: {
+    sentences: number;
+    beats: number;
+    shots: number;
+    alignment: { method: string; confidence: number };
+    fixes: string[];
+    scanErrors: { path: string; error: string }[];
+    notes: string[];
+    entities: string[];
+  };
+}
+
+export interface PreferencesState {
+  current: ProductionPreferences;
+  history: { version: number; at: string; changes: string[] }[];
+}
+
 export interface PrimestoneApi {
   platform: string;
   appVersion(): Promise<string>;
@@ -91,6 +120,16 @@ export interface PrimestoneApi {
   export: {
     start(req: ExportRequest): Promise<{ taskId: string }>;
     result(taskId: string): Promise<ExportOutcome>;
+  };
+  production: {
+    run(projectFile: string, project: Project, inputs: ProductionInputs, prefs: ProductionPreferences): Promise<{ taskId: string }>;
+    result(taskId: string): Promise<ProductionOutcome>;
+    preferences(): Promise<PreferencesState>;
+    setPreferences(p: ProductionPreferences, reason: string): Promise<PreferencesState>;
+    learn(generated: EditStyle, edited: EditStyle): Promise<{ state: PreferencesState; changes: string[] }>;
+    revertPreferences(version: number): Promise<PreferencesState>;
+    readTextFile(): Promise<{ path: string; text: string } | null>;
+    chooseFolders(): Promise<string[]>;
   };
   tasks: {
     list(): Promise<TaskInfo[]>;

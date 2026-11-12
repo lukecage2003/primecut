@@ -50,3 +50,25 @@ in the export task. Exports are verified before being published.
 Vitest for core (unit) and engine (integration against real FFmpeg with generated media, checking
 pixels and audio levels of rendered files). Playwright + Electron under Xvfb for end-to-end tests
 of the real UI, with native dialogs stubbed in the main process.
+
+## ADR-009 — Script-to-Video as a pure planning layer over the editor (2026-11-12)
+The production engine outputs ordinary Sequences. Benefits: everything generated is previewable,
+editable, undoable and exported by the already-verified pipeline; QC and preference learning can
+compare generated vs. edited versions with the same data model. Planning code is pure TypeScript
+(testable without FFmpeg); only audio analysis and file scanning live in the engine.
+
+## ADR-010 — Model-free alignment first, recogniser optional
+Pause-based DP alignment works offline on any machine with zero downloads and is accurate at the
+sentence level when the narration has natural pauses (validated on real audio). Word-level timing
+uses a recogniser transcript when available (faster-whisper sidecar, opt-in model download).
+Rationale: the brief forbids silent model downloads, and a 4 GB VRAM laptop must stay usable.
+
+## ADR-011 — Captions via ASS/libass
+One caption model renders through libass in export (any FFmpeg build with libass, incl. BtbN Windows
+builds) and through matching HTML/CSS metrics in the preview. Fonts: Arial (present on Windows,
+mapped by fontconfig elsewhere).
+
+## ADR-012 — Ken Burns via per-frame scale + fixed crop
+`scale=eval=frame` + `crop` with time expressions gives smooth zoom/pan with a fixed output size;
+the identical formula (core/motion.ts, smoothstep easing) drives the CSS preview. Zoompan was
+rejected (integer jitter unless heavily upscaled).

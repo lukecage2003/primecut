@@ -2,6 +2,7 @@ import path from 'node:path';
 import { BrowserWindow, Menu, app, nativeTheme } from 'electron';
 import { resolveFfmpeg, setFfmpegPaths } from '../engine/ffmpeg';
 import { registerIpc } from './ipc';
+import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
 import { loadSettings } from './settings';
 
@@ -50,6 +51,7 @@ app.whenReady().then(() => {
   if (!process.env.PRIMESTONE_DEVTOOLS) Menu.setApplicationMenu(null);
   registerMediaProtocol();
   registerIpc(() => mainWindow, () => (closeAllowed = true));
+  registerProductionIpc();
   createWindow();
 });
 

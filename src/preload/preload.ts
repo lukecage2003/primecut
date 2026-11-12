@@ -40,6 +40,16 @@ const api: PrimestoneApi = {
     start: (req) => invoke('export:start', req),
     result: (id) => invoke('export:result', id),
   },
+  production: {
+    run: (file, project, inputs, prefs) => invoke('production:run', file, project, inputs, prefs),
+    result: (id) => invoke('production:result', id),
+    preferences: () => invoke('production:preferences'),
+    setPreferences: (p, reason) => invoke('production:setPreferences', p, reason),
+    learn: (g, e) => invoke('production:learn', g, e),
+    revertPreferences: (v) => invoke('production:revertPreferences', v),
+    readTextFile: () => invoke('production:readTextFile'),
+    chooseFolders: () => invoke('production:chooseFolders'),
+  },
   tasks: {
     list: () => invoke('tasks:list'),
     cancel: (id) => invoke('tasks:cancel', id),

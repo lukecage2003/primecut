@@ -6,11 +6,11 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core) | `npx vitest run tests/unit` | ✅ 33 / 33 |
-| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 13 / 13 |
-| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 3 / 3 |
+| Unit (core + production) | `npx vitest run tests/unit` | ✅ 45 / 45 |
+| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 15 / 15 |
+| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 4 / 4 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
-| Windows CI job | `.github/workflows/ci.yml` | ⏳ not yet observed (no Windows runner in this environment) |
+| Windows CI job (GitHub windows-latest) | `.github/workflows/ci.yml` | ✅ unit+integration 35/35 and E2E 2/2 passed on run 1; job failed only at worker teardown (orphaned Electron helpers) → fixed with process-tree kill; re-run pending |
 
 ## What the tests prove
 
@@ -40,6 +40,17 @@ video+audio, pruning when clips separate, following splits, duration clamp), fad
 render plan (extensions, ramps, layer order, disabled tracks/clips), schema v1→v2 migration; export
 of a dissolve verified as a ~50% red/blue mix at the cut, fade from black, audio crossfade; UI test
 of Ctrl+D, transition selection/delete/undo, fade slider, and the unsaved-changes prompt on close.
+
+**Script-to-Video:** FR sentence splitting with abbreviations/acronyms and directives; entity
+recognition with FR aliases and elisions; pause alignment exact on constructed cases and robust to
+intra-sentence pauses; transcript alignment robust to recognition errors; timeline construction
+(continuous coverage, relevant images for named characters/hints/issues, narration loudness gain,
+motion, dissolves, titles, name tags, subtitle line limits); placeholders + QC errors without media;
+rights policy; QC auto-fix; preference adaptation. Integration on **real audio** (flite TTS with
+known boundaries): pause detection and ±0.3 s sentence alignment; full pipeline from a media folder
+with sidecar tags → QC ≥ 80, no errors, correct image per sentence, verified export with audible
+narration, Ken Burns motion (frame difference) and burned subtitles (pixel diff vs. caption-less
+export). E2E: the whole flow through the UI including preview captions and export.
 
 ## Not covered yet
 GPU encoders/decoders (no GPU here), Windows-specific paths (covered by CI job once run), long

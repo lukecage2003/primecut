@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { type Clip, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
-import { clearPreview, deleteSelectedTransition, edit, previewEdit } from '../actions';
+import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead } from '../actions';
+import { store } from '../store';
 import { currentProject, currentSequence, useEditor } from '../store';
 
 function Slider({ label, value, min, max, step, fmt, onPreview, onCommit, testid }: {
@@ -103,7 +104,8 @@ export function Inspector() {
             </button>
           </div>
         )}
-        {!primary && !trInfo && (
+        {!primary && !trInfo && seq.production && <ProductionReport />}
+        {!primary && !trInfo && !seq.production && (
           <div className="insp">
             <div className="section-title">Sequence</div>
             <dl className="kv">
@@ -220,6 +222,44 @@ export function Inspector() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProductionReport() {
+  const seq = useEditor((e) => currentSequence(e));
+  const media = useEditor((e) => currentProject(e).media);
+  const p = seq.production!;
+  const rate = seq.settings.frameRate;
+  const sec = (f: number) => (f * rate.den) / rate.num;
+  return (
+    <div className="insp" data-testid="production-report">
+      <div className="section-title">Generated · v{p.version}</div>
+      <dl className="kv">
+        <dt>QC score</dt>
+        <dd data-testid="qc-score">{p.qcScore}/100</dd>
+        <dt>Sync</dt>
+        <dd>{p.alignment.method === 'transcript' ? 'word-level' : 'pauses'} · {Math.round(p.alignment.confidence * 100)}%</dd>
+        <dt>Shots</dt>
+        <dd>{p.shots.length} ({p.shots.filter((s) => s.quality === 'strong').length} specific)</dd>
+      </dl>
+      <div className="row">
+        <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Regenerate…</button>
+        <button className="btn ghost" onClick={() => void learnFromEdits()} title="Adapt pacing, motion and transitions to how you edited this version">Learn from my edits</button>
+      </div>
+      {p.qcIssues.length > 0 && <div className="section-title">Quality control</div>}
+      {p.qcIssues.map((i, k) => (
+        <div key={k} className={`issue ${i.severity}`} onClick={() => i.frame !== undefined && setPlayhead(i.frame)}>
+          {i.severity === 'error' ? '●' : i.severity === 'warning' ? '▲' : 'ℹ'} {i.message}
+        </div>
+      ))}
+      <div className="section-title">Shots — why each image</div>
+      {p.shots.map((s, k) => (
+        <div key={k} className={`report-shot ${s.quality}`} onClick={() => setPlayhead(s.start)} title={s.text}>
+          <b>{sec(s.start).toFixed(1)}s</b> · {s.mediaId ? media[s.mediaId]?.name : 'missing visual'}
+          <div className="tiny">{s.reasons.join(' · ')}</div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { framesToTimecode, sequenceDuration } from '../../core';
+import { CAPTION_METRICS, framesToTimecode, sequenceDuration } from '../../core';
 import { setPlayhead } from '../actions';
 import { pause, togglePlay } from '../playback';
 import { PreviewEngine } from '../preview';
@@ -72,6 +72,7 @@ export function Viewer() {
       <div className="viewer-stage" ref={boxRef}>
         <div className="viewer-canvas" ref={stageRef} style={{ width: size.w, height: size.h }} data-testid="viewer-canvas">
           {empty && <div className="viewer-empty">Add media to the timeline to preview</div>}
+          <CaptionLayer height={size.h} />
         </div>
       </div>
       <div className="transport">
@@ -99,6 +100,43 @@ export function Viewer() {
           {framesToTimecode(duration, rate)}
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Draws the active captions with the same relative metrics as the exported ASS styles. */
+function CaptionLayer({ height }: { height: number }) {
+  // select a primitive key (stable snapshot), then resolve the captions
+  const key = useEditor((e) =>
+    currentSequence(e)
+      .captions.filter((c) => c.start <= e.playhead && e.playhead < c.end)
+      .map((c) => c.id)
+      .join(','),
+  );
+  const all = useEditor((e) => currentSequence(e).captions);
+  const ids = new Set(key.split(','));
+  const caps = all.filter((c) => ids.has(c.id));
+  return (
+    <div className="caption-layer" data-testid="caption-layer">
+      {caps.map((c) => {
+        const m = CAPTION_METRICS[c.style];
+        const [first, ...rest] = c.text.split('\n');
+        const style: React.CSSProperties = { fontSize: m.size * height };
+        if (c.style === 'subtitle') style.bottom = m.marginV * height;
+        if (c.style === 'lower-third') style.bottom = m.marginV * height;
+        return (
+          <div key={c.id} className={`cap ${c.style}`} style={style} data-style={c.style}>
+            {c.style === 'lower-third' ? (
+              <>
+                {first}
+                {rest.length > 0 && <span className="sub">{rest.join(' ')}</span>}
+              </>
+            ) : (
+              c.text
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

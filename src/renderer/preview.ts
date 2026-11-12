@@ -8,7 +8,7 @@
  *   drift by more than ~3 frames. While paused, elements are seeked exactly to the frame.
  * - Clips starting within the next 2 s are pre-loaded and pre-seeked to avoid gaps on cuts.
  */
-import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, planSequence, rampAt, rateToNumber } from '../core';
+import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, motionAt, planSequence, rampAt, rateToNumber } from '../core';
 import { mediaUrl } from '../shared/api';
 
 interface Layer {
@@ -133,7 +133,7 @@ export class PreviewEngine {
       const t = it.sourceIn + framesToSeconds(frame - it.start, rate) * clip.speed;
       const ramp = rampAt(it, frame);
       if (kind === 'video') {
-        this.layout(el as HTMLElement, media, clip, W, H, z++, ramp);
+        this.layout(el as HTMLElement, media, clip, W, H, z++, ramp, (frame - it.start + 0.5) / Math.max(1, it.end - it.start));
         el.style.display = 'block';
       }
       if (el instanceof HTMLMediaElement) {
@@ -162,7 +162,7 @@ export class PreviewEngine {
     }
   }
 
-  private layout(el: HTMLElement, media: MediaAsset, clip: Clip, W: number, H: number, z: number, ramp: number) {
+  private layout(el: HTMLElement, media: MediaAsset, clip: Clip, W: number, H: number, z: number, ramp: number, progress: number) {
     const v = media.probe.video!;
     const rot = v.rotation % 180 !== 0;
     const w = rot ? v.height : v.width;
@@ -176,8 +176,22 @@ export class PreviewEngine {
     const s = this.scale;
     el.style.width = `${ow * s}px`;
     el.style.height = `${oh * s}px`;
-    el.style.transform = `translate(${x * s}px, ${y * s}px) rotate(${tr.rotation}deg)`;
-    el.style.transformOrigin = `${(ow * s) / 2}px ${(oh * s) / 2}px`;
+    // Ken Burns identical to the exporter: scale by zoom, crop window offset by pan, clip to the box.
+    const m = motionAt(clip.motion, progress);
+    const cx = ((ow * m.zoom - ow) / 2) * (1 + m.panX);
+    const cy = ((oh * m.zoom - oh) / 2) * (1 + m.panY);
+    const half = `${(ow * s) / 2}px, ${(oh * s) / 2}px`;
+    el.style.transformOrigin = '0 0';
+    el.style.transform =
+      `translate(${x * s}px, ${y * s}px) translate(${half}) rotate(${tr.rotation}deg) translate(-${half.replace(', ', ', -')})` +
+      (m.zoom !== 1 ? ` translate(${-cx * s}px, ${-cy * s}px) scale(${m.zoom})` : '');
+    if (m.zoom !== 1) {
+      const l = cx / m.zoom;
+      const t = cy / m.zoom;
+      const w = ow / m.zoom;
+      const h = oh / m.zoom;
+      el.style.clipPath = `inset(${t * s}px ${(ow - l - w) * s}px ${(oh - t - h) * s}px ${l * s}px)`;
+    } else el.style.clipPath = '';
     el.style.opacity = String(tr.opacity * ramp);
     el.style.zIndex = String(z);
   }

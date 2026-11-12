@@ -89,3 +89,22 @@ Evidence refers to test files (U = tests/unit, I = tests/integration, E = tests/
 | 24 | Diagnostics | Partial (hardware/FFmpeg report) |
 | 25 | Settings | Partial (theme, profile, autosave, projects folder) |
 | 6–12, 14–17, 19–20, 26–27 | Automatic Editing, Storyboard, Script Intelligence, Motion Design, VFX, Audio Studio, Voice Studio, Quality Control, Local AI, Comics Intelligence, Model Manager, Preference Learning, API Manager, Plugins, Learning Center | Planned — no UI exists for them yet, by design |
+
+## Script-to-Video (priority track)
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| STV-01 | Parse FR script (sections, sentences, abbreviations, directives) | Done | U production › script parsing |
+| STV-02 | Narration analysis (pauses, loudness) | Done | I production › narration analysis |
+| STV-03 | Sentence-level sync without any model | Done | U alignment; I ±0.3 s on real synthetic speech |
+| STV-04 | Word-level sync from a transcript | Partial | U alignToTranscript; recogniser sidecar not integrated |
+| STV-05 | Entity recognition (characters, teams, events, issues, unknown names) | Partial | U entities; seed KB is `curated`, no sourced entries yet |
+| STV-06 | Explainable media matching from user folders/tags/sidecars | Done | U timeline construction; I production (sidecar tags) |
+| STV-07 | Rights model; never auto-place non-cleared media | Done | U “never auto-places…”; QC rights errors |
+| STV-08 | Automatic timeline (shots, motion, dissolves, narration/music levels) | Done | U, I, E script-to-video |
+| STV-09 | Titles, subtitles, name tags, missing-visual cards, burned on export and shown in preview | Done | I (pixel diff with/without captions), E (caption layer) |
+| STV-10 | QC with auto-fix and score | Done | U QC tests; report in UI |
+| STV-11 | Versions (each generation = new sequence), editable result | Done | E (sequence switcher, save) |
+| STV-12 | Preference adaptation from edits, versioned and revertible | Partial | U adaptPreferences; UI “Learn from my edits”; revert via IPC (no UI list yet) |
+| STV-13 | Web media search with licence checks | Planned | — |
+| STV-14 | Sound design (ducking, SFX), emotional pacing | Planned | — |

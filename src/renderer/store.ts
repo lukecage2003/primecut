@@ -41,6 +41,7 @@ export interface EditorSession {
   proxies: Record<string, string>;
   selectedMedia: string | null;
   selectedTransition: string | null;
+  productionTask: string | null;
   snapAt: number | null;
   savedAt: string;
   version: number; // bumps on history change
@@ -53,7 +54,7 @@ export interface AppState {
   tasks: Record<string, TaskInfo>;
   toasts: Toast[];
   modal: ModalSpec | null;
-  overlay: null | 'export' | 'settings' | 'tasks';
+  overlay: null | 'export' | 'settings' | 'tasks' | 'production';
 }
 
 type Listener = () => void;

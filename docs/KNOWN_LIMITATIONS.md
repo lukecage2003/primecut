@@ -32,3 +32,18 @@ Honest list; each item has a planned phase.
 - No GPU was available in the development container: hardware encoders/decoders are implemented with
   verification but not exercised in tests here.
 - Installer is unsigned (SmartScreen warning on Windows).
+
+## Script-to-Video
+- Sync is sentence-level by default (pause-based). Narrations without pauses between sentences fall
+  back to syllable interpolation (QC warns when confidence < 50%). Word-level sync needs a
+  recogniser transcript; the recogniser sidecar is not shipped yet.
+- Entity knowledge base is a small curated seed (identity data only); unknown names are reported
+  but not looked up.
+- Media search is limited to the user's folders/project; no web providers yet.
+- Portrait comic pages are shown pillarboxed (black sides) — blurred fill and panel-by-panel moves
+  are next.
+- Music bed is set at a fixed relative level; no sidechain ducking or sound effects yet.
+- Ken Burns scaling uses even pixel sizes per frame; very slow zooms on large frames may show slight
+  stepping.
+- The pause aligner was validated on synthetic TTS speech (flite) in tests; it should be validated on
+  real French narrations of the target channel.

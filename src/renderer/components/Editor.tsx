@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { sequenceDuration } from '../../core';
-import { addDefaultTransition, closeProject, deleteSelection, edit, redo, save, setPlayhead, splitAtPlayhead, undo } from '../actions';
+import { addDefaultTransition, closeProject, deleteSelection, switchSequence, edit, redo, save, setPlayhead, splitAtPlayhead, undo } from '../actions';
 import { addMarker } from '../../core';
 import { pause, play, togglePlay } from '../playback';
 import { type Tool, currentSequence, store, useEditor, useStore } from '../store';
@@ -9,6 +9,7 @@ import { Inspector } from './Inspector';
 import { MediaLibrary } from './MediaLibrary';
 import { TaskPanel } from './Overlays';
 import { SettingsPanel } from './Settings';
+import { ProductionPanel } from './ProductionPanel';
 import { Timeline } from './Timeline';
 import { Viewer } from './Viewer';
 
@@ -17,7 +18,7 @@ const TOOL_KEYS: Record<string, Tool> = { v: 'select', c: 'razor', b: 'ripple', 
 function onKey(ev: KeyboardEvent) {
   const t = ev.target as HTMLElement;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
-  if (store.state.modal || store.state.overlay === 'export' || store.state.overlay === 'settings') return;
+  if (store.state.modal || store.state.overlay === 'export' || store.state.overlay === 'settings' || store.state.overlay === 'production') return;
   const e = store.state.editor;
   if (!e) return;
   const mod = ev.ctrlKey || ev.metaKey;
@@ -82,6 +83,10 @@ export function Editor() {
         <div className="brand-mark" style={{ width: 28, height: 28, fontSize: 14, borderRadius: 8 }}>
           P
         </div>
+        <button className="btn primary" onClick={() => store.set({ overlay: 'production' })} data-testid="open-production" title="Script + narration → finished video">
+          ✦ Script-to-Video
+        </button>
+        <SequenceSwitcher />
         <span className="title" data-testid="project-title">
           {name}
           {dirty && <span className="dirty" title="Unsaved changes">●</span>}
@@ -119,7 +124,25 @@ export function Editor() {
       {overlay === 'export' && <ExportDialog />}
       {overlay === 'tasks' && <TaskPanel />}
       {overlay === 'settings' && <SettingsPanel />}
+      {overlay === 'production' && <ProductionPanel />}
     </div>
+  );
+}
+
+function SequenceSwitcher() {
+  const seqs = useEditor((e) => e.history.present.sequences);
+  const active = useEditor((e) => e.history.present.activeSequenceId);
+  const list = Object.values(seqs);
+  if (list.length < 2) return null;
+  return (
+    <select className="input" style={{ height: 30, maxWidth: 220 }} value={active} onChange={(e) => switchSequence(e.target.value)} data-testid="sequence-switcher" title="Sequences / generated versions">
+      {list.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+          {s.production ? ` · QC ${s.production.qcScore}` : ''}
+        </option>
+      ))}
+    </select>
   );
 }
 

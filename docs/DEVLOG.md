@@ -42,3 +42,16 @@ domain package, immer-based history, JSON project bundle.
 
 **Next concrete task:** nesting (sequence as clip), titles track (text rendering shared by preview
 and export), copy/paste and box selection.
+
+### Mission update — Script-to-Video becomes the priority
+- Re-evaluated architecture (docs/SCRIPT_TO_VIDEO.md, ADR-009…012) and roadmap (STV track).
+- Implemented `src/production` (parsing, alignment, entities, beats, matching, builder, QC,
+  preferences), engine audio analysis + pipeline, schema v3 (clip motion, captions, media rights/tags,
+  production report), Ken Burns + ASS captions in export and preview, Script-to-Video panel,
+  sequence versions switcher, production report with per-shot explanations, “Learn from my edits”.
+- Bugs found by tests and fixed: [VISUEL:] hint applied to a whole paragraph instead of the next
+  sentence; a hinted image consumed by the previous shot (now reserved for its beat); acronym at
+  sentence end (S.H.I.E.L.D.) not splitting; elided aliases (l'Araignée) not matched; overlapping
+  name tags; Windows CI orphaned Electron helpers (tree kill); harness crash reading a closed app's pid.
+- Environment note: Hugging Face and Wikimedia hosts are blocked by this environment's network
+  policy, so the recogniser and web providers could not be exercised here.

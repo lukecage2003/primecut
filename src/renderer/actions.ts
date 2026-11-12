@@ -107,6 +107,7 @@ async function enterEditor(res: OpenResult, project: Project, recovered = false)
       proxies,
       selectedMedia: null,
       selectedTransition: null,
+      productionTask: null,
       snapAt: null,
       savedAt: res.savedAt,
       version: 0,
@@ -384,4 +385,91 @@ export async function startExport(output: string) {
     toast(`Export failed to start: ${errorText(err)}`, 'error');
     return null;
   }
+}
+
+// ---------------------------------------------------------------- Script-to-Video
+
+import type { ProductionInputs } from '../shared/api';
+import type { ProductionPreferences } from '../production/preferences';
+import { measureStyle } from '../production/qc';
+
+const INPUTS_KEY = 'production.inputs';
+
+export function savedProductionInputs(): ProductionInputs | null {
+  const e = store.state.editor;
+  const raw = e?.history.present.metadata[INPUTS_KEY];
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ProductionInputs;
+  } catch {
+    return null;
+  }
+}
+
+/** Runs the Script-to-Video pipeline; the result becomes a new sequence (one undoable step). */
+export async function runProduction(inputs: ProductionInputs, prefs: ProductionPreferences): Promise<boolean> {
+  const e = ed();
+  e.history.commit('Production inputs', (d) => {
+    d.metadata[INPUTS_KEY] = JSON.stringify(inputs);
+  });
+  try {
+    const { taskId } = await api.production.run(e.file, e.history.present, inputs, prefs);
+    store.setEditor({ productionTask: taskId });
+    await waitForTask(taskId);
+    const r = await api.production.result(taskId);
+    const cur = ed();
+    cur.history.commit(`Generate “${r.sequence.name}”`, (d) => {
+      for (const m of r.newMedia) d.media[m.id] = m as Draft<MediaAsset>;
+      d.sequences[r.sequence.id] = r.sequence as Draft<Sequence>;
+      d.activeSequenceId = r.sequence.id;
+    });
+    store.setEditor((x) => ({
+      productionTask: null,
+      selection: [],
+      playhead: 0,
+      mediaStatus: { ...x.mediaStatus, ...Object.fromEntries(r.newMedia.map((m) => [m.id, 'online' as const])) },
+    }));
+    for (const m of r.newMedia) void prepareMedia(m);
+    const qc = r.sequence.production!;
+    toast(`${r.sequence.name}: ${r.report.shots} shots, ${r.report.beats} sequences, QC ${qc.qcScore}/100${r.report.fixes.length ? ` · ${r.report.fixes.length} auto-fix(es)` : ''}`, 'success', undefined, 6000);
+    return true;
+  } catch (err) {
+    store.setEditor({ productionTask: null });
+    toast(`Generation failed: ${errorText(err)}`, 'error');
+    return false;
+  }
+}
+
+function waitForTask(id: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const t = store.state.tasks[id];
+      if (!t) return false;
+      if (t.state === 'done') return resolve(), true;
+      if (t.state === 'failed' || t.state === 'cancelled') return reject(new Error(t.error ?? t.state)), true;
+      return false;
+    };
+    if (check()) return;
+    const off = store.subscribe(() => {
+      if (check()) off();
+    });
+  });
+}
+
+export function switchSequence(id: string) {
+  const e = ed();
+  if (e.history.present.activeSequenceId === id) return;
+  e.history.commit('Switch sequence', (d) => {
+    d.activeSequenceId = id;
+  });
+  store.setEditor({ selection: [], selectedTransition: null, playhead: 0 });
+}
+
+/** Compares the current (edited) generated sequence with its generation baseline and adapts preferences. */
+export async function learnFromEdits() {
+  const seq = currentSequence(ed());
+  if (!seq.production) return toast('This sequence was not generated automatically', 'error');
+  const { changes } = await api.production.learn(seq.production.style as never, measureStyle(seq));
+  if (!changes.length) toast('No measurable difference from the generated version — preferences unchanged', 'info');
+  else toast(`Preferences updated: ${changes.join(' · ')}`, 'success', undefined, 8000);
 }

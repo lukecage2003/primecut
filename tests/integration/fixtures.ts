@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ffmpeg } from '../../src/engine';
+import { ffmpeg, importMediaFile } from '../../src/engine';
 
 export function tmpDir(prefix = 'ps-test-'): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -38,4 +38,36 @@ export async function audioRms(file: string, t0: number, t1: number): Promise<nu
   let sum = 0;
   for (const x of s) sum += (x / 32768) ** 2;
   return Math.sqrt(sum / Math.max(1, s.length));
+}
+
+/** Synthetic narration (FFmpeg flite TTS): lead-in silence, sentences separated by pauses. Returns file + true sentence times. */
+export async function makeNarration(dir: string, sentences: string[], pause = 0.8): Promise<{ file: string; truth: { start: number; end: number }[] }> {
+  const parts: string[] = [];
+  const truth: { start: number; end: number }[] = [];
+  const sil = async (d: number, i: number) => {
+    const f = path.join(dir, `nsil${i}.wav`);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(d), '-ar', '48000', '-ac', '1', f]);
+    parts.push(f);
+  };
+  let t = 0.6;
+  await sil(0.6, 0);
+  for (const [i, s] of sentences.entries()) {
+    const f = path.join(dir, `ns${i}.wav`);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `flite=text='${s.replace(/['’:]/g, ' ')}':voice=slt`, '-af', 'volume=6dB', '-ar', '48000', '-ac', '1', f]);
+    const d = (await importMediaFile(f)).probe.durationSec;
+    parts.push(f);
+    truth.push({ start: t, end: t + d });
+    t += d + pause;
+    await sil(pause, i + 1);
+  }
+  const list = path.join(dir, 'nlist.txt');
+  fs.writeFileSync(list, parts.map((p) => `file '${p.replace(/\\/g, '/')}'`).join('\n'));
+  const file = path.join(dir, 'narration.wav');
+  await ffmpeg(['-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c:a', 'pcm_s16le', file]);
+  return { file, truth };
+}
+
+export async function makeImage(file: string, color: string, size = '1200x1800') {
+  await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${size},drawbox=c=${color}@0.6:t=fill`, '-frames:v', '1', file]);
+  return file;
 }
