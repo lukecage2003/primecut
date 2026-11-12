@@ -2,7 +2,7 @@
   "name": "primestone-motion-studio",
   "productName": "Primestone Motion Studio",
   "version": "0.4.0-dev",
-  "description": "Primestone Motion Studio \u2014 local-first professional video editor",
+  "description": "Primestone Motion Studio — local-first professional video editor",
   "license": "MIT",
   "private": true,
   "main": "dist/main/main.js",
@@ -24,6 +24,7 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.3.1",
     "electron-builder": "^26.18.0",
@@ -38,12 +39,13 @@
     "immer": "^11.2.10",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "three": "^0.170.0"
   },
   "build": {
     "appId": "com.primestone.motionstudio",
     "productName": "Primestone Motion Studio",
-    "copyright": "Copyright \u00a9 2026 Primestone",
+    "copyright": "Copyright © 2026 Primestone",
     "directories": {
       "output": "release",
       "buildResources": "build"

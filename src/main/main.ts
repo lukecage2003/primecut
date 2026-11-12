@@ -5,6 +5,9 @@ import { registerIpc } from './ipc';
 import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
 import { loadSettings } from './settings';
+import { renderPCore } from './pcoreRender';
+import { pcoreFrames } from '../engine/pcore';
+import { DEFAULT_PCORE_SETTINGS } from '../pcore/expression';
 
 if (process.env.PRIMESTONE_USER_DATA) app.setPath('userData', process.env.PRIMESTONE_USER_DATA);
 
@@ -52,7 +55,36 @@ app.whenReady().then(() => {
   registerMediaProtocol();
   registerIpc(() => mainWindow, () => (closeAllowed = true));
   registerProductionIpc();
+  const cli = process.argv.indexOf('--pcore-render');
+  if (cli >= 0) {
+    // headless P-CORE render (tests, batch): electron . --pcore-render job.json
+    void runPCoreCli(process.argv[cli + 1]!).then((code) => app.exit(code));
+    return;
+  }
   createWindow();
 });
 
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  if (!process.argv.includes('--pcore-render')) app.quit();
+});
+
+async function runPCoreCli(jobFile: string): Promise<number> {
+  const fs = await import('node:fs/promises');
+  try {
+    const j = JSON.parse(await fs.readFile(jobFile, 'utf8'));
+    if (process.env.PRIMESTONE_DEBUG) console.error('pcore job', j.output);
+    const fpsNum = j.fps.num / j.fps.den;
+    const t0 = Date.now();
+    const frames = await pcoreFrames(j.audioPath ?? null, { offsetSec: j.offsetSec ?? 0, durationSec: j.durationSec, fps: fpsNum, events: j.events, settings: j.settings });
+    const t1 = Date.now();
+    if (process.env.PRIMESTONE_DEBUG) console.error('frames', frames.length);
+    const check = await renderPCore({ width: j.width, height: j.height, fps: j.fps, frames, settings: { ...DEFAULT_PCORE_SETTINGS, ...j.settings }, composition: j.composition ?? 'core', seed: j.seed ?? 7, format: j.format, output: j.output, quality: j.quality, audio: j.withAudio && j.audioPath ? { path: j.audioPath, offsetSec: j.offsetSec ?? 0 } : undefined });
+    const states: Record<string, number> = {};
+    for (const f of frames) states[f.state] = (states[f.state] ?? 0) + 1;
+    await fs.writeFile(`${jobFile}.result.json`, JSON.stringify({ ok: true, check, analysisMs: t1 - t0, renderMs: Date.now() - t1, frames: frames.length, states, sample: frames.filter((_, i) => i % Math.max(1, Math.round(fpsNum / 2)) === 0).map((f) => [f.state, +f.energy.toFixed(2), +f.glow.toFixed(2), +f.fragment.toFixed(2), +f.rotY.toFixed(2)]) }, null, 1));
+    return 0;
+  } catch (e) {
+    await fs.writeFile(`${jobFile}.result.json`, JSON.stringify({ ok: false, error: String((e as Error).stack ?? e) }));
+    return 1;
+  }
+}
