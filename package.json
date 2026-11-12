@@ -2,7 +2,7 @@
   "name": "primestone-motion-studio",
   "productName": "Primestone Motion Studio",
   "version": "0.1.0",
-  "description": "Primestone Motion Studio — local-first professional video editor",
+  "description": "Primestone Motion Studio \u2014 local-first professional video editor",
   "license": "MIT",
   "private": true,
   "main": "dist/main/main.js",
@@ -16,7 +16,8 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "node scripts/build.mjs && playwright test --trace off",
-    "dist:win": "node scripts/build.mjs && electron-builder --win"
+    "dist:win": "node scripts/build.mjs && electron-builder --win --x64 --publish never",
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs gpl"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.3.1",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "typescript": "5.9",
     "vite": "^8.0.8",
@@ -34,5 +36,59 @@
     "immer": "^11.2.10",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
-  }
+  },
+  "build": {
+    "appId": "com.primestone.motionstudio",
+    "productName": "Primestone Motion Studio",
+    "copyright": "Copyright \u00a9 2026 Primestone",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "fileAssociations": [
+      {
+        "ext": "psproj",
+        "name": "Primestone Project",
+        "description": "Primestone Motion Studio project"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    }
+  },
+  "author": "Primestone"
 }

@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg xvfb
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: xvfb-run -a -s "-screen 0 1600x1000x24" npx playwright test --trace off
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: node scripts/fetch-ffmpeg.mjs gpl
+      - name: Unit + integration tests (bundled FFmpeg)
+        env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\vendor\ffmpeg' }
+        run: npm test
+      - run: npm run build
+      - name: End-to-end tests
+        env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\vendor\ffmpeg' }
+        run: npx playwright test --trace off
+      - name: Package installer
+        run: npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: primestone-windows-installer
+          path: release/*.exe
