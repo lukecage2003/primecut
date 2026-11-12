@@ -33,17 +33,19 @@ Honest list; each item has a planned phase.
   verification but not exercised in tests here.
 - Installer is unsigned (SmartScreen warning on Windows).
 
-## Script-to-Video
-- Sync is sentence-level by default (pause-based). Narrations without pauses between sentences fall
-  back to syllable interpolation (QC warns when confidence < 50%). Word-level sync needs a
-  recogniser transcript; the recogniser sidecar is not shipped yet.
-- Entity knowledge base is a small curated seed (identity data only); unknown names are reported
-  but not looked up.
-- Media search is limited to the user's folders/project; no web providers yet.
-- Portrait comic pages are shown pillarboxed (black sides) — blurred fill and panel-by-panel moves
-  are next.
-- Music bed is set at a fixed relative level; no sidechain ducking or sound effects yet.
-- Ken Burns scaling uses even pixel sizes per frame; very slow zooms on large frames may show slight
-  stepping.
-- The pause aligner was validated on synthetic TTS speech (flite) in tests; it should be validated on
-  real French narrations of the target channel.
+## Script-to-Video (v0.5)
+- Word-level sync needs a transcription engine installed by the user (faster-whisper or
+  whisper.cpp) and a Whisper model on disk; Primestone does not download either. Without it, sync
+  is pause-based and was measured at ~3 s median error on a TTS narration: not production quality.
+- All measurements so far use a synthetic espeak-ng voice; **the real narration ("test spidey") has
+  not been processed yet** because it is on the user's PC, not in the development environment.
+- whisper.cpp backend: implemented from its documented JSON output and unit-tested on that format,
+  but not run end-to-end here (no ggml model reachable from the development network).
+- Procedural compositions render at ≈ 2× real time on 4 CPU cores (1080p): a 90-minute video with
+  no illustrations needs hours on such a machine. GPU acceleration of compositions is not done.
+- Knowledge base: ~50 curated entries + names learned from each script (marked uncertain, no facts).
+- No web media providers yet (rights model and UI exist; no provider implemented or tested).
+- PDF import: multi-column layouts and tables inside the narration are not handled; production
+  tables in annexes are kept as notes, not applied to the edit.
+- Hardware encoders (NVENC on the RTX 3050) and CUDA transcription have never run on real hardware
+  here: use "Save diagnostics report" in Settings to measure them on the target PC.

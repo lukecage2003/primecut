@@ -46,3 +46,28 @@ appears under its final name. **Show in folder** reveals it.
 ## Settings & diagnostics (⚙)
 Theme, performance profile, autosave interval, and a read-only hardware report (CPU, RAM, GPU,
 verified hardware encoders, FFmpeg build in use).
+
+## Script-to-Video with your real scripts (v0.5)
+
+**Script.** *Load script (PDF, .txt, .md)* accepts your production PDFs directly: timed headings
+(`0:00 - 1:35 | INTRODUCTION`), `VISUELS —`, `Montage :`, `Texte : « … »`, `Source(s) comics :` and
+annexes (`SOURCES`, `FICHE DE RIGUEUR`, `RÉALISATION`) are recognised; only the narration is synced
+and subtitled. The converted script appears in the text box: check it and correct it if needed.
+
+**Word-level sync (recommended).** Install one engine, once:
+- *faster-whisper*: install Python 3.10+, then `python -m pip install faster-whisper`
+  (add `nvidia-cublas-cu12 nvidia-cudnn-cu12` for the RTX GPU). Get a Whisper model folder in
+  CTranslate2 format (e.g. “faster-whisper-small”, ≈ 0.5 GB, or “-medium”, ≈ 1.5 GB; MIT licence).
+- or *whisper.cpp*: download a release build (CUDA build for NVIDIA) and a `ggml-*.bin` model.
+
+Then in **Settings → Local transcription**: tick *Use local transcription*, select the engine and
+the model, press **Check**. The narration is transcribed on your PC, never uploaded; the result is
+cached in the project.
+
+**Sound.** Music placed with the generator is lowered under the voice automatically (Inspector →
+select the music clip → *Lower this track under* / *Ducking depth*). Procedural whooshes/impacts go
+on the `SFX` track; delete them or lower the track if you don't want them (*Learn from my edits*
+remembers it).
+
+**Diagnostics.** Settings → *Save diagnostics report…* writes a JSON file (GPU/VRAM, CPU, RAM,
+free space, a real 1080p encode benchmark, verified hardware encoders). Nothing is sent anywhere.

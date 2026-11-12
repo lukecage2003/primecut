@@ -72,3 +72,25 @@ mapped by fontconfig elsewhere).
 `scale=eval=frame` + `crop` with time expressions gives smooth zoom/pan with a fixed output size;
 the identical formula (core/motion.ts, smoothstep easing) drives the CSS preview. Zoompan was
 rejected (integer jitter unless heavily upscaled).
+
+## ADR-013 — Production scripts are imported, not reformatted by the user
+Real scripts arrive as PDFs with timed headings, VISUELS/Montage/Texte/Sources blocks and annexes.
+Primestone converts them to its Markdown-with-directives form (`scriptImport.ts`) instead of asking
+the author to rewrite them; the converted text is shown and editable. PDF text comes from pdf.js;
+words glued by justification are repaired with word lists plus the document's own vocabulary.
+
+## ADR-014 — Transcription through user-installed engines
+Two backends behind one contract (word JSON): faster-whisper (Python) and whisper.cpp (single
+executable, CUDA builds). Primestone checks but never installs or downloads; audio is decoded to
+16 kHz WAV by Primestone and stays local. Alignment is a banded edit-distance DP anchored on unique
+trigrams (linear memory, 15k words < 1 s), edges snapped to speech onsets from the audio analysis.
+
+## ADR-015 — Ducking as a deterministic envelope
+Music ducking is computed from the narration track's waveform peaks into a gain envelope shared by
+the preview (Web Audio) and the export (`asendcmd` + `volume`), instead of `sidechaincompress`,
+so what is heard while editing is what is exported and the depth is editable and learnable.
+
+## ADR-016 — Procedural sound effects, segmented export
+SFX (whoosh, impact, tick) are synthesised with FFmpeg: no sample library, no licence question.
+Long or clip-heavy exports are rendered in video segments cut where no transition runs, plus one
+audio pass, joined by stream copy and verified; segments are reused after an interruption.
