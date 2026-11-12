@@ -9,7 +9,10 @@ import type { HardwareReport, PerformanceProfile } from '../engine/hardware';
 import type { MediaResolution } from '../engine/projectStore';
 import type { TaskInfo } from '../engine/tasks';
 import type { EngineCheck, TranscriberConfig } from '../engine/transcribe';
+import type { AlphaCheck, PCoreFormat } from '../engine/pcore';
+import type { PCoreStudioRequest } from '../main/pcoreRender';
 
+export type { AlphaCheck, PCoreFormat, PCoreStudioRequest };
 export type { HardwareReport, MediaResolution, TaskInfo, PerformanceProfile, TranscriberConfig, EngineCheck };
 
 export interface RecentProject {
@@ -41,6 +44,8 @@ export interface AppSettings {
   projectsDir: string;
   /** Optional local speech recognition for word-level sync (off until the user configures it). */
   transcriber: TranscriberConfig;
+  /** P-CORE appearance / reactions / placement (brand-wide). */
+  pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings> };
 }
 
 export interface ExportRequest {
@@ -94,6 +99,12 @@ export interface PrimestoneApi {
   settings: {
     get(): Promise<AppSettings>;
     set(patch: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  pcore: {
+    analyze(r: PCoreStudioRequest): Promise<{ fps: number; voice: { env: number; low: number; mid: number; high: number; speaking: boolean }[]; states: string[]; energy: number[]; fragment: number[] }>;
+    preview(projectFile: string, r: PCoreStudioRequest & { size: number }): Promise<string>;
+    exportFile(r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean }): Promise<{ path: string; check: AlphaCheck } | null>;
+    onProgress(cb: (f: number) => void): () => void;
   };
   transcriber: {
     /** Read-only check of the configured engine/model (never installs or downloads). */

@@ -26,8 +26,9 @@ export async function makeVfrClip(file: string) {
 }
 
 /** Reads the average RGB of a frame at time t. */
-export async function frameColor(file: string, t: number): Promise<[number, number, number]> {
-  const { stdout } = await ffmpeg(['-v', 'error', '-ss', t.toFixed(4), '-i', file, '-frames:v', '1', '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
+export async function frameColor(file: string, t: number, x?: number, y?: number): Promise<[number, number, number]> {
+  const vf = x === undefined ? 'scale=1:1' : `format=rgb24,crop=3:3:${x - 1}:${y! - 1},scale=1:1`;
+  const { stdout } = await ffmpeg(['-v', 'error', '-ss', t.toFixed(4), '-i', file, '-frames:v', '1', '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
   return [stdout[0]!, stdout[1]!, stdout[2]!];
 }
 

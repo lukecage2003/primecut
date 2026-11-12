@@ -62,11 +62,14 @@ export function placeForShot(media: MediaAsset | null, W: number, H: number, s: 
   const U = Math.min(W, H);
   const m = s.margin * H;
   const sub = s.subtitleBand * H;
-  if (!media || media.generator) {
+  // informative compositions (names, dates, quotes) are content: P-CORE steps aside for them
+  const informative = media?.generator && ['character-card', 'timeline', 'typography'].includes(media.generator.kind);
+  if (!media || (media.generator && !informative)) {
     const size = s.heroScale * U;
     return { mode: 'hero', transform: at(W, H, W / 2, Math.min(H / 2, (H - sub) / 2 + m), size), reason: media ? 'procedural composition: P-CORE leads' : 'no illustration: P-CORE leads' };
   }
-  if (!s.overIllustrations) return { mode: 'hidden', transform: { x: 0, y: 0, scale: 0.01, rotation: 0, opacity: 0 }, reason: 'illustration: P-CORE hidden by settings' };
+  // informative compositions are not illustrations: P-CORE stays present beside them
+  if (!s.overIllustrations && !informative) return { mode: 'hidden', transform: { x: 0, y: 0, scale: 0.01, rotation: 0, opacity: 0 }, reason: 'illustration: P-CORE hidden by settings' };
   const v = media.probe.video;
   if (v) {
     const fit = Math.min(W / v.width, H / v.height);

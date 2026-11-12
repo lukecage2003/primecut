@@ -289,9 +289,13 @@ export async function renderGenerator(spec: GeneratorSpec, o: RenderGeneratorOpt
   else f.push('[core]nullsink', '[h2]null[h3]');
   if (useOrb) f.push(`[h3][orb]overlay=x=0:y=0:format=gbrp[h4]`);
   else f.push('[h3]null[h4]');
-  f.push(`[h4]split[hA][hB];[hB]scale=${q}:${q}:flags=bilinear,gblur=sigma=${Math.max(1, Math.round(q / 90))},scale=${S}:${S}:flags=bicubic[hG];[hA][hG]blend=all_mode=screen:all_opacity=0.6[holo]`);
+  if (spec.backdrop) {
+    // background only: the hologram stays out (P-CORE is composited above)
+    f.push('[h4]nullsink');
+  } else f.push(`[h4]split[hA][hB];[hB]scale=${q}:${q}:flags=bilinear,gblur=sigma=${Math.max(1, Math.round(q / 90))},scale=${S}:${S}:flags=bicubic[hG];[hA][hG]blend=all_mode=screen:all_opacity=0.6[holo]`);
   const grade = kind === 'dramatic' ? ',eq=contrast=1.25:saturation=1.2' : '';
-  f.push(`[${last}]format=gbrp,split[bA][bB];[bB]crop=${S}:${S}:${fx}:${fy}[bC];[bC][holo]blend=all_mode=screen[bH];[bA][bH]overlay=x=${fx}:y=${fy}:format=gbrp${grade}[o_h]`);
+  if (spec.backdrop) f.push(`[${last}]format=gbrp${grade}[o_h]`);
+  else f.push(`[${last}]format=gbrp,split[bA][bB];[bB]crop=${S}:${S}:${fx}:${fy}[bC];[bC][holo]blend=all_mode=screen[bH];[bA][bH]overlay=x=${fx}:y=${fy}:format=gbrp${grade}[o_h]`);
   last = 'o_h';
   if (useWave) over('wave', '0', `${Math.round(H * (portrait ? 0.86 : 0.78))}`);
   f.push(`[${last}][${vigInput}:v]overlay=format=auto,format=yuv420p[comp]`);

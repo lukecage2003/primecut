@@ -134,7 +134,9 @@ export function buildExportPlan(
       inputs.push('-loop', '1', '-framerate', rateStr, '-t', f6(clipSec + 1), '-i', it.media.path);
     } else {
       // +1s of slack so fps/trim always have enough frames to cut the exact count.
-      inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 1), '-i', it.media.path);
+      // VP9/VP8 alpha lives in a side channel only libvpx decodes (P-CORE renders, transparent overlays)
+      const vpxAlpha = it.media.hasAlpha && /^vp[89]$/.test(it.media.probe.video?.codec ?? '') ? ['-c:v', it.media.probe.video!.codec === 'vp8' ? 'libvpx' : 'libvpx-vp9'] : [];
+      inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 1), ...vpxAlpha, '-i', it.media.path);
     }
     const idx = nIn++;
     const { w, h } = displaySize(it.media);
@@ -179,7 +181,7 @@ export function buildExportPlan(
       chain.push(`scale=${ow}:${oh}:flags=lanczos`);
     }
     chain.push('setsar=1');
-    const needsAlpha = tr.rotation % 360 !== 0 || tr.opacity < 1 || p.fin > 0 || p.fout > 0;
+    const needsAlpha = !!it.media.hasAlpha || tr.rotation % 360 !== 0 || tr.opacity < 1 || p.fin > 0 || p.fout > 0;
     if (needsAlpha) chain.push('format=yuva420p');
     if (tr.rotation % 360 !== 0) {
       const a = f6((tr.rotation * Math.PI) / 180);

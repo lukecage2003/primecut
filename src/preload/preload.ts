@@ -6,6 +6,16 @@ const invoke = (ch: string, ...args: unknown[]) => ipcRenderer.invoke(ch, ...arg
 const api: PrimestoneApi = {
   platform: process.platform,
   appVersion: () => invoke('app:version'),
+  pcore: {
+    analyze: (r) => invoke('pcore:analyze', r),
+    preview: (file, r) => invoke('pcore:preview', file, r),
+    exportFile: (r) => invoke('pcore:export', r),
+    onProgress: (cb) => {
+      const l = (_e: unknown, f: number) => cb(f);
+      ipcRenderer.on('pcore:progress', l);
+      return () => ipcRenderer.removeListener('pcore:progress', l);
+    },
+  },
   transcriber: {
     check: (cfg) => invoke('transcriber:check', cfg),
     pick: (kind) => invoke('transcriber:pick', kind),

@@ -20,6 +20,8 @@ export interface ProductionPreferences {
   panelReading: boolean;
   /** Fill shots without a relevant illustration with procedural compositions (never a black screen). */
   proceduralVisuals: boolean;
+  /** P-CORE presence: off, only where there is no illustration ('hero'), or always (discreet over pictures). */
+  pcore: 'off' | 'hero' | 'always';
   visualStyle: 'gold' | 'hologram' | 'crimson';
   /** Seconds spent per panel. */
   secondsPerPanel: number;
@@ -53,6 +55,7 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   motionWeights: { 'zoom-in': 3, 'zoom-out': 2, 'pan-left': 1, 'pan-right': 1, 'pan-up': 0.5, 'pan-down': 0.5 },
   panelReading: true,
   proceduralVisuals: true,
+  pcore: 'hero',
   visualStyle: 'gold',
   secondsPerPanel: 1.8,
   sectionDissolveFrames: 15,

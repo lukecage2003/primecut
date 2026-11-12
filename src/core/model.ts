@@ -73,6 +73,10 @@ export interface MediaAsset {
   rights?: MediaRights;
   /** Procedural composition rendered by the engine (file at `path` is the cached render). */
   generator?: import('./generators').GeneratorSpec;
+  /** The file carries a real alpha channel (verified when it was rendered). */
+  hasAlpha?: boolean;
+  /** P-CORE render description (voice-reactive presence; rendered by the P-CORE engine). */
+  pcore?: PCoreClipSpec;
   /** Procedural sound effect rendered locally (Primestone SFX). */
   sfx?: SfxSpec;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
@@ -349,4 +353,18 @@ export interface SfxSpec {
   kind: SfxKind;
   seed: number;
   durationSec: number;
+}
+
+export interface PCoreClipSpec {
+  /** Narration window driving the animation. */
+  audioMediaId: string;
+  offsetSec: number;
+  durationSec: number;
+  /** Square render size (px). */
+  size: number;
+  composition: 'core' | 'floating' | 'minimal';
+  seed: number;
+  mode: 'hero' | 'side' | 'corner';
+  /** Narrative/marker events (seconds on the narration). */
+  events: { time: number; duration: number; state: 'reveal' | 'focus' | 'transition' | 'emphasis' | 'intense'; source: 'semantic' | 'marker'; label?: string }[];
 }

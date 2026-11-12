@@ -1,5 +1,6 @@
 import { SCRIPT_EXTENSIONS, readScriptDocument } from '../engine/scriptFile';
 import { transcribe } from '../engine/transcribe';
+import { renderPCoreAsset } from './pcoreRender';
 import { loadSettings } from './settings';
 import type { RecognisedWord } from '../production';
 import fs from 'node:fs';
@@ -74,7 +75,7 @@ export function registerProductionIpc() {
           }
         }
         const r = await produceVideo(
-          { project, projectDir: path.dirname(projectFile), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript },
+          { project, projectDir: path.dirname(projectFile), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
           (f, m) => {
             const base = transcript ? 0.31 : 0;
             c.progress(base + (1 - base) * f, m);

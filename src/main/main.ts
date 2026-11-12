@@ -5,13 +5,19 @@ import { registerIpc } from './ipc';
 import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
 import { loadSettings } from './settings';
-import { renderPCore } from './pcoreRender';
+import { registerPCoreIpc, renderPCore } from './pcoreRender';
 import { pcoreFrames } from '../engine/pcore';
 import { DEFAULT_PCORE_SETTINGS } from '../pcore/expression';
 
 if (process.env.PRIMESTONE_USER_DATA) app.setPath('userData', process.env.PRIMESTONE_USER_DATA);
 
 registerSchemePrivileges();
+// P-CORE renders with WebGL2 on the GPU. Test machines without a GPU opt in to Chromium's software
+// rasteriser explicitly with PRIMESTONE_SOFTWARE_GL=1 (never enabled by default in the app).
+if (process.env.PRIMESTONE_SOFTWARE_GL === '1') {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+}
 
 let mainWindow: BrowserWindow | null = null;
 let closeAllowed = false;
@@ -55,6 +61,7 @@ app.whenReady().then(() => {
   registerMediaProtocol();
   registerIpc(() => mainWindow, () => (closeAllowed = true));
   registerProductionIpc();
+  registerPCoreIpc();
   const cli = process.argv.indexOf('--pcore-render');
   if (cli >= 0) {
     // headless P-CORE render (tests, batch): electron . --pcore-render job.json

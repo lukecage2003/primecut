@@ -40,7 +40,7 @@ export async function killAll() {
 export async function launch(userData: string): Promise<Session> {
   const app = await electron.launch({
     args: [path.resolve('.'), '--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
-    env: { ...process.env, PRIMESTONE_USER_DATA: userData },
+    env: { ...process.env, PRIMESTONE_USER_DATA: userData, PRIMESTONE_SOFTWARE_GL: '1' },
   });
   pids.set(app, app.process().pid);
   launched.push({ app });

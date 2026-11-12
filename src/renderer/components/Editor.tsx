@@ -10,6 +10,7 @@ import { MediaLibrary } from './MediaLibrary';
 import { TaskPanel } from './Overlays';
 import { SettingsPanel } from './Settings';
 import { ProductionPanel } from './ProductionPanel';
+import { PCoreStudio } from './PCoreStudio';
 import { Timeline } from './Timeline';
 import { Viewer } from './Viewer';
 
@@ -86,6 +87,9 @@ export function Editor() {
         <button className="btn primary" onClick={() => store.set({ overlay: 'production' })} data-testid="open-production" title="Script + narration → finished video">
           ✦ Script-to-Video
         </button>
+        <button className="btn" onClick={() => store.set({ overlay: 'pcore' })} data-testid="open-pcore" title="P-CORE: the voice-reactive Primestone presence">
+          P-CORE
+        </button>
         <SequenceSwitcher />
         <span className="title" data-testid="project-title">
           {name}
@@ -125,6 +129,7 @@ export function Editor() {
       {overlay === 'tasks' && <TaskPanel />}
       {overlay === 'settings' && <SettingsPanel />}
       {overlay === 'production' && <ProductionPanel />}
+      {overlay === 'pcore' && <PCoreStudio />}
     </div>
   );
 }

@@ -102,3 +102,34 @@ describe('segmented export', () => {
     expect(fs.existsSync(path.join(dir, '.seg.segments'))).toBe(false); // cleaned after success
   });
 });
+
+describe('transparent overlays', () => {
+  it('composites a VP9 alpha clip (P-CORE format) over V1 with its transparency', async () => {
+    const dir = tmpDir();
+    const { makeColorClip, frameColor } = await import('./fixtures');
+    const bgFile = await makeColorClip(path.join(dir, 'blue.mp4'), 'blue', 2);
+    const ov = path.join(dir, 'overlay.webm');
+    // 200×200 transparent square with an opaque yellow disc-ish box in the centre
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', "color=c=black:s=200x200:d=2:r=30,format=rgba,geq=r='255*between(X,50,150)*between(Y,50,150)':g='255*between(X,50,150)*between(Y,50,150)':b=0:a='255*between(X,50,150)*between(Y,50,150)'", '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', ov]);
+    const bg = await importMediaFile(bgFile);
+    const o = { ...(await importMediaFile(ov)), hasAlpha: true };
+    let p: Project = createProject('alpha', { width: 320, height: 180, frameRate: { num: 30, den: 1 } });
+    p = { ...p, media: { [bg.id]: bg, [o.id]: o } };
+    const h = new History(p);
+    h.commit('place', (d) => {
+      const seq = d.sequences[d.activeSequenceId]!;
+      placeMedia(seq, d.media[bg.id]!, { videoTrack: 0, audioTrack: 0, start: 0, mode: 'overwrite' });
+      placeMedia(seq, d.media[o.id]!, { videoTrack: 1, audioTrack: 1, start: 0, mode: 'overwrite' });
+    });
+    const out = path.join(dir, 'alpha.mp4');
+    expect((await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out, segmentSeconds: 0 })).ok).toBe(true);
+    // centre: yellow overlay; corner of the overlay square (transparent there): blue background shows
+    const [r, g, b] = await frameColor(out, 1, 160, 90);
+    expect(r).toBeGreaterThan(180);
+    expect(g).toBeGreaterThan(180);
+    expect(b).toBeLessThan(90);
+    const [r2, , b2] = await frameColor(out, 1, 85, 20);
+    expect(b2).toBeGreaterThan(150);
+    expect(r2).toBeLessThan(60);
+  });
+});

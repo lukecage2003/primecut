@@ -111,6 +111,9 @@ export interface ProductionRequest {
   mediaFolders: string[];
   settings?: Partial<SequenceSettings>;
   prefs: ProductionPreferences;
+  pcorePlacement?: Partial<import('../pcore/placement').PlacementSettings>;
+  /** Renders a P-CORE asset (Electron host); without it P-CORE clips are left out and reported. */
+  renderPCore?: (asset: MediaAsset, narration: MediaAsset, settings: SequenceSettings, signal?: AbortSignal) => Promise<string>;
   /** Optional word timestamps from a local recogniser (precise alignment). */
   transcript?: RecognisedWord[] | null;
   name?: string;
@@ -165,10 +168,21 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const settings: SequenceSettings = { width: 1920, height: 1080, frameRate: { num: 30, den: 1 }, sampleRate: 48000, ...base, ...req.settings };
   const versions = Object.values(req.project.sequences).filter((s) => s.production).length;
   const name = req.name ?? `Auto v${versions + 1}`;
-  const built = buildSequence({ name, settings, script, alignment, narration, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs });
+  const built = buildSequence({ name, settings, script, alignment, narration, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs, pcorePlacement: req.pcorePlacement });
 
   // render procedural compositions (cached by spec hash) so they behave like ordinary media
+  const pcoreNotes: string[] = [];
+  if (!req.renderPCore) {
+    const pc = new Set(built.generated.filter((g) => g.pcore).map((g) => g.id));
+    if (pc.size) {
+      for (const t of built.sequence.tracks) t.clips = t.clips.filter((c) => !pc.has(c.mediaId));
+      pcoreNotes.push('P-CORE not rendered: no 3D renderer in this context (run inside the app)');
+    }
+  }
   const toRender = built.generated.filter((g) => built.sequence.tracks.some((t) => t.clips.some((c) => c.mediaId === g.id)));
+  // P-CORE renders share one GPU window: render them after the CPU work, one at a time
+  const pcoreQueue = toRender.filter((g) => g.pcore);
+  for (const g of pcoreQueue) toRender.splice(toRender.indexOf(g), 1);
   const cacheDir = path.join(req.projectDir, 'Cache');
   let done = 0;
   const rate = `${settings.frameRate.num}/${settings.frameRate.den}`;
@@ -185,6 +199,21 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   // each FFmpeg render is itself multi-threaded: one worker per ~3 hardware threads (2–4)
   const workers = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 3)));
   if (toRender.length) await Promise.all(Array.from({ length: workers }, () => worker()));
+  for (const [i, g] of pcoreQueue.entries()) {
+    progress(0.72 + 0.08 * (i / pcoreQueue.length), `Rendering P-CORE (${i + 1}/${pcoreQueue.length})`);
+    try {
+      g.path = await req.renderPCore!(g, narration, settings, signal);
+      g.fingerprint = await fingerprintFile(g.path);
+      g.relativePath = path.relative(req.projectDir, g.path);
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      // P-CORE must never break a production: leave it out and say why
+      const failed = new Set(pcoreQueue.slice(i).map((x) => x.id));
+      for (const t of built.sequence.tracks) t.clips = t.clips.filter((c) => !failed.has(c.mediaId));
+      pcoreNotes.push(`P-CORE left out: ${(e as Error).message}`);
+      break;
+    }
+  }
 
   progress(0.8, 'Quality control');
   const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated].map((a) => [a.id, a])) };
@@ -214,6 +243,6 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     sequence: built.sequence,
     newMedia: [...scan.assets, ...built.generated].filter((a) => used.has(a.id)),
     timings: alignment.sentences.map((a) => ({ index: a.index, start: a.start, end: a.end, text: script.sentences[a.index]?.text ?? '' })),
-    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: script.notes, entities, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
+    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...pcoreNotes], entities, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

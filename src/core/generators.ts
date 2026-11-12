@@ -19,6 +19,8 @@ export interface GeneratorSpec {
   /** 0..1 — how strongly visuals react / how busy they are. */
   intensity: number;
   durationSec: number;
+  /** Background only (no central hologram): P-CORE stands in front of it. */
+  backdrop?: boolean;
 }
 
 export const VISUAL_KINDS: { id: VisualKind; label: string }[] = [

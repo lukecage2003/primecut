@@ -27,6 +27,8 @@ import {
   specHash,
 } from '../core';
 import { decideVisual } from './visuals';
+import { semanticEvents } from '../pcore/expression';
+import { type PlacementSettings, planPlacement } from '../pcore/placement';
 import { scriptEntities } from './entities';
 import { SEED_KNOWLEDGE } from './knowledge';
 import { beatPacing, speechRates } from './pacing';
@@ -48,6 +50,8 @@ export interface BuildInput {
   library: MediaAsset[];
   prefs: ProductionPreferences;
   entityIndex?: EntityIndex;
+  /** P-CORE placement settings (sizes, corner, margins). */
+  pcorePlacement?: Partial<PlacementSettings>;
 }
 
 export interface BuildResult {
@@ -103,6 +107,8 @@ export function buildSequence(input: BuildInput): BuildResult {
     const dec = decideVisual(beat, { index, previous: prevVisual, shotIndex: shots.length, speechSec: speechIn(startSec, startSec + durSec), durationSec: durSec, style: prefs.visualStyle });
     prevVisual = dec.spec.kind;
     const spec: GeneratorSpec = { ...dec.spec, durationSec: durSec + 2 * PAD, audio: { mediaId: input.narration.id, offsetSec: Math.max(0, startSec - PAD) } };
+    // with P-CORE, voice-reactive backgrounds drop their own hologram: P-CORE is the presence
+    if ((prefs.pcore ?? 'off') !== 'off' && ['audio-hud', 'dramatic', 'cosmic', 'data-matrix'].includes(spec.kind)) spec.backdrop = true;
     const label = VISUAL_KINDS.find((k) => k.id === spec.kind)?.label ?? spec.kind;
     const asset: MediaAsset = {
       id: newId(),
@@ -371,5 +377,38 @@ export function buildSequence(input: BuildInput): BuildResult {
   }
   normalizeSequence(seq, Object.fromEntries([...input.library, ...generated, input.narration, ...(input.music ? [input.music] : [])].map((m) => [m.id, m])));
   void framesToSeconds;
+  // P-CORE: the creator's visual presence on V2, placed from what V1 shows
+  if ((prefs.pcore ?? 'off') !== 'off') {
+    const fps = rate.num / rate.den;
+    const events = semanticEvents(input.alignment.sentences.map((a) => ({ start: a.start, end: a.end, text: input.script.sentences[a.index]?.text ?? '', section: input.script.sentences[a.index]?.section })));
+    const mediaMap = Object.fromEntries([...input.library, ...generated].map((m) => [m.id, m]));
+    const segs = planPlacement(seq, mediaMap, endFrame, { ...input.pcorePlacement, overIllustrations: prefs.pcore === 'always' }, events);
+    const v2 = seq.tracks.filter((t) => t.kind === 'video')[1]!;
+    const U = Math.min(settings.width, settings.height);
+    for (const g of segs) {
+      if (g.mode === 'hidden' || g.end - g.start < Math.round(fps * 0.8)) continue;
+      const size = Math.max(128, Math.min(2160, Math.round((g.transform.scale * U) / 2) * 2));
+      const offsetSec = framesToSeconds(g.start, rate);
+      const durationSec = framesToSeconds(g.end - g.start, rate);
+      const asset: MediaAsset = {
+        id: newId(),
+        name: `P-CORE · ${g.mode}`,
+        kind: 'video',
+        path: '',
+        fingerprint: { size: 0, mtimeMs: 0, partialHash: `pcore-${g.mode}-${size}-${offsetSec.toFixed(3)}-${durationSec.toFixed(3)}` },
+        probe: { durationSec, container: 'webm', video: { codec: 'vp9', width: size, height: size, frameRate: rate, avgFrameRate: rate, isVFR: false, pixFmt: 'yuva420p', rotation: 0 } },
+        importedAt: new Date().toISOString(),
+        rights: { usage: 'owned', source: 'primestone-pcore', checkedAt: new Date().toISOString(), note: 'P-CORE presence rendered locally from the official logo' },
+        hasAlpha: true,
+        pcore: { audioMediaId: input.narration.id, offsetSec, durationSec, size, composition: g.mode === 'hero' ? 'core' : 'floating', seed: 7, mode: g.mode, events: events.filter((e) => e.time + e.duration > offsetSec && e.time < offsetSec + durationSec) },
+      };
+      generated.push(asset);
+      const c = clip(asset.id, asset.name, g.start, g.end - g.start);
+      c.transform = { ...g.transform };
+      c.fadeIn = Math.min(F(0.25), c.duration);
+      c.fadeOut = Math.min(F(0.25), c.duration - c.fadeIn);
+      v2.clips.push(c);
+    }
+  }
   return { sequence: seq, beats, shots, generated };
 }
