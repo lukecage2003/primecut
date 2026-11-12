@@ -79,7 +79,7 @@ const TARGETS: Record<PCoreState, Target> = {
   listening: { glow: 0.45, ringSpread: 0.35, particles: 0.3, burst: 0, scale: 1, fragment: 0, trail: 0, spin: 0.18, ySpin: 0, tilt: 0.12 },
   speaking: { glow: 0.65, ringSpread: 0.55, particles: 0.5, burst: 0, scale: 1.02, fragment: 0, trail: 0.1, spin: 0.3, ySpin: 0, tilt: 0.1 },
   emphasis: { glow: 0.9, ringSpread: 0.8, particles: 0.75, burst: 0.6, scale: 1.07, fragment: 0, trail: 0.3, spin: 0.5, ySpin: 0, tilt: 0.05 },
-  intense: { glow: 1, ringSpread: 1, particles: 1, burst: 0.4, scale: 1.1, fragment: 0.05, trail: 0.5, spin: 0.8, ySpin: 0, tilt: 0.05 },
+  intense: { glow: 1, ringSpread: 1, particles: 1, burst: 0.4, scale: 1.1, fragment: 0, trail: 0.5, spin: 0.8, ySpin: 0, tilt: 0.05 },
   focus: { glow: 0.55, ringSpread: 0.3, particles: 0.2, burst: 0, scale: 1.04, fragment: 0, trail: 0, spin: 0.12, ySpin: 0, tilt: 0 },
   transition: { glow: 0.7, ringSpread: 0.9, particles: 0.8, burst: 0.3, scale: 1, fragment: 1, trail: 0.4, spin: 0.4, ySpin: 0, tilt: 0.1 },
   reveal: { glow: 1, ringSpread: 1, particles: 1, burst: 1, scale: 1.12, fragment: 0, trail: 1, spin: 0.6, ySpin: 1, tilt: 0 },

@@ -25,6 +25,7 @@ Playwright (Apache-2.0), @types/* (MIT), electron-builder (MIT, planned for pack
 | faster-whisper (optional, user-installed) | MIT | Transcription sidecar, `tools/transcribe/faster_whisper_words.py`. Not bundled. |
 | whisper.cpp (optional, user-installed) | MIT | Alternative transcription engine (no Python). Not bundled. |
 | Whisper model weights (user-provided) | MIT | Never downloaded by Primestone. |
+| three (Three.js) 0.170 | MIT | P-CORE 3D renderer (bundled in the hidden render page). |
 | espeak-ng | GPL-3.0 | **Test tooling only** (campaign narrations); not shipped, not linked. |
 
 ## Evaluated for upcoming phases (not integrated yet)

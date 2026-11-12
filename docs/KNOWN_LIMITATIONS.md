@@ -49,3 +49,9 @@ Honest list; each item has a planned phase.
   tables in annexes are kept as notes, not applied to the edit.
 - Hardware encoders (NVENC on the RTX 3050) and CUDA transcription have never run on real hardware
   here: use "Save diagnostics report" in Settings to measure them on the target PC.
+
+## P-CORE (v0.6)
+- Rendered offline (cached video clips), not live in the viewer; reaction changes need a re-render.
+- Measured only with software WebGL (no GPU here): ≈ 3 fps at 1080². GPU speed on the RTX 3050 unknown.
+- The narration "test spidey" has not been processed: it is on the creator's PC.
+- Emotion is not inferred from the voice (loudness, transients, rhythm and script cues only).

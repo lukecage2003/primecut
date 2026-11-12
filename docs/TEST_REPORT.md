@@ -6,9 +6,9 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core + production) | `npx vitest run tests/unit` | ✅ 59 / 59 |
-| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 22 / 22 |
-| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 5 / 5 |
+| Unit (core + production + P-CORE) | `npx vitest run tests/unit` | ✅ 67 / 67 |
+| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 23 / 23 |
+| End-to-end (Electron UI, Xvfb, software WebGL) | `npx playwright test` | ✅ 6 / 6 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
 | GitHub CI (windows-latest + ubuntu) | `.github/workflows/ci.yml` | ✅ runs 3, 7–10 green on both OS (unit, integration, E2E, NSIS installer); runs for the v0.5 commits: see Actions |
 
@@ -75,7 +75,7 @@ test with the real narration.**
 | Short vertical 1080×1920 (Despair, 2 min 26) | 146 s | 58 s | 3 s* | 262 s (1.78×) | 1 ms / 164 ms / 93 % | 20 / 7 / 0 | 100 | −16.0 LUFS / −1.4 dBFS | none |
 | Comics analysis 1080p (Télépathie, many refs) | 601 s | 209 s | 184 s | 764 s (1.27×) | 58 ms / 448 ms / 83 % | 74 / 13 / 13 | 100 | −16.1 / −1.4 | none |
 | No illustrations 1080p (Apocalypse) | 526 s | 188 s | 1089 s | 555 s (1.05×) | 44 ms / 381 ms / 85 % | 0 / 0 / 95 | 100 | −16.1 / −1.4 | none |
-| Documentary 720p (5 scripts, ~90 min) | see DEVLOG | | | | | | | | |
+| Documentary 720p (5 scripts, 66 min of TTS narration) | 3948 s | 1560 s (0.40×RT) | 551 s | export running at time of writing | 58 ms / 381 ms / 85 % (1 outlier 9.5 s) | 512 / 75 / 110 | 100 | — | — |
 
 \* procedural compositions cached from a previous run. Peak memory ≤ 242 MB in all runs.
 Without transcription (pauses only) the sentence error was ~3 s median on the same narration:

@@ -94,3 +94,11 @@ so what is heard while editing is what is exported and the depth is editable and
 SFX (whoosh, impact, tick) are synthesised with FFmpeg: no sample library, no licence question.
 Long or clip-heavy exports are rendered in video segments cut where no transition runs, plus one
 audio pass, joined by stream copy and verified; segments are reused after an interruption.
+
+## ADR-017 — P-CORE: Three.js in a hidden window, frames piped to FFmpeg
+The reference brand animation is a real 3D object (thickness, metal reflections, Y-axis turn), which
+the FFmpeg 2D compositor cannot do convincingly. Three.js (MIT) runs in a hidden Electron window;
+every frame is a pure function of parameters, read back as straight-alpha RGBA and encoded by
+FFmpeg, then the file is decoded again to prove its alpha. VP9-alpha WebM is the timeline format
+(small, plays with transparency in the preview, decoded with libvpx in exports); ProRes 4444 /
+QuickTime Animation / PNG are offered for Premiere and other tools.
