@@ -1,0 +1,11 @@
+import { _electron as electron } from '@playwright/test';
+import fs from 'node:fs';
+const ud = fs.mkdtempSync('/tmp/ps-smoke-');
+const app = await electron.launch({ args: ['.', '--no-sandbox'], env: { ...process.env, PRIMESTONE_USER_DATA: ud } });
+const page = await app.firstWindow();
+page.on('console', (m) => console.log('console:', m.type(), m.text()));
+page.on('pageerror', (e) => console.log('pageerror:', e.message));
+await page.waitForTimeout(2500);
+await page.screenshot({ path: process.argv[2] ?? 'smoke.png' });
+await app.close();
+console.log('ok');
