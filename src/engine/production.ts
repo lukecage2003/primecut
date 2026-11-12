@@ -22,6 +22,17 @@ import {
 } from '../production';
 import { analyzeAudio } from './audioAnalysis';
 import { importMediaFile } from './media';
+import { ffmpeg } from './ffmpeg';
+import { detectPanels } from '../core';
+
+/** Decodes a page at low resolution and runs panel detection (XY-cut on gutters). */
+export async function detectPagePanels(file: string, w: number, h: number, signal?: AbortSignal) {
+  const W = 320;
+  const H = Math.max(2, Math.round((W * h) / w / 2) * 2);
+  const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `scale=${W}:${H},format=gray`, '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
+  const panels = detectPanels(new Uint8Array(stdout.buffer, stdout.byteOffset, W * H), W, H);
+  return panels.length >= 2 ? panels : undefined;
+}
 
 const MEDIA_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff', '.gif', '.mp4', '.mov', '.mkv', '.webm', '.m4v']);
 
@@ -74,6 +85,8 @@ export async function scanMediaFolders(folders: string[], projectDir: string, kn
       }
       a.tags = tags;
       a.rights = rights;
+      const v = a.probe.video;
+      if (a.kind === 'image' && v && v.height > v.width * 1.15) a.panels = await detectPagePanels(a.path, v.width, v.height, signal).catch(() => undefined);
       out.assets.push(a);
     } catch (e) {
       out.errors.push({ path: f, error: (e as Error).message });

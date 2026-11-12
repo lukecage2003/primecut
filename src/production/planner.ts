@@ -166,7 +166,7 @@ export function reserveHinted(beats: Beat[], library: LibraryItem[]): Map<string
 
 /** Deterministic weighted pick (stable across runs for the same input). */
 export function pickMotion(prefs: ProductionPreferences, seed: number, previous: MotionKind | null, portrait: boolean): MotionKind {
-  const entries = Object.entries(prefs.motionWeights).filter(([k]) => k !== previous) as [Exclude<MotionKind, 'none'>, number][];
+  const entries = Object.entries(prefs.motionWeights).filter(([k]) => k !== previous) as [Exclude<MotionKind, 'none' | 'panels'>, number][];
   const weighted = entries.map(([k, w]) => [k, portrait && (k === 'pan-up' || k === 'pan-down') ? w * 3 : w] as const);
   const total = weighted.reduce((a, [, w]) => a + w, 0);
   if (total <= 0 || prefs.motionAmount <= 0) return 'none';

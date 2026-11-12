@@ -116,3 +116,43 @@ describe('Script-to-Video', () => {
     }
   });
 });
+
+describe('comic page read panel by panel', async () => {
+  const { detectPagePanels } = await import('../../src/engine');
+  const { History, placeMedia, windowFor } = await import('../../src/core');
+  it('detects panels on a real page image and the export frames each panel in order', async () => {
+    const pageFile = path.join(dir, 'page.png');
+    // white page 1000x1500, 2x2 panels: red, green / blue, yellow
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1000x1500', '-vf',
+      'drawbox=x=40:y=40:w=440:h=680:c=red:t=fill,drawbox=x=520:y=40:w=440:h=680:c=green:t=fill,drawbox=x=40:y=780:w=440:h=680:c=blue:t=fill,drawbox=x=520:y=780:w=440:h=680:c=yellow:t=fill',
+      '-frames:v', '1', pageFile]);
+    const panels = await detectPagePanels(pageFile, 1000, 1500);
+    expect(panels).toHaveLength(4);
+    const project = createProject('Pages', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const a = await importMediaFile(pageFile);
+    project.media[a.id] = a;
+    const h = new History(project);
+    h.commit('place', (d) => {
+      const s = d.sequences[d.activeSequenceId]!;
+      placeMedia(s, d.media[a.id]!, { videoTrack: 0, audioTrack: 0, start: 0, mode: 'overwrite' });
+      const c = s.tracks[0]!.clips[0]!;
+      c.duration = 240; // 8 s, 2 s per panel
+      c.motion = { kind: 'panels', amount: 0, path: panels!.map((p) => windowFor(p, 1000 / 1500, 16 / 9)) };
+    });
+    const out = path.join(dir, 'panels.mp4');
+    await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out });
+    const centre = async (t: number) => {
+      const { stdout } = await ffmpeg(['-v', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-vf', 'crop=iw/4:ih/4:iw*3/8:ih*3/8,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
+      return [stdout[0]!, stdout[1]!, stdout[2]!] as [number, number, number];
+    };
+
+    const [r1, g1, b1] = await centre(0.6);
+    expect(r1 > 200 && g1 < 60 && b1 < 60).toBe(true); // panel 1 red
+    const [r2, g2] = await centre(2.6);
+    expect(g2 > 100 && r2 < 60).toBe(true); // panel 2 green
+    const [, , b3] = await centre(4.6);
+    expect(b3).toBeGreaterThan(200); // panel 3 blue
+    const [r4, g4, b4] = await centre(6.6);
+    expect(r4 > 200 && g4 > 200 && b4 < 60).toBe(true); // panel 4 yellow
+  });
+});

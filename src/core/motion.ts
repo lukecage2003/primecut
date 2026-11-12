@@ -33,6 +33,8 @@ export function motionAt(m: ClipMotion | undefined, progress: number): MotionSta
       return { zoom: 1 + a, panX: 0, panY: 1 - 2 * e };
     case 'pan-down':
       return { zoom: 1 + a, panX: 0, panY: -1 + 2 * e };
+    default:
+      return { zoom: 1, panX: 0, panY: 0 };
   }
 }
 

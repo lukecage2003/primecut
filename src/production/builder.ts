@@ -17,6 +17,7 @@ import {
   wrapLines,
   DEFAULT_TRANSFORM,
   normalizeSequence,
+  windowFor,
 } from '../core';
 import type { AlignmentResult } from './align';
 import { EntityIndex } from './entities';
@@ -111,8 +112,14 @@ export function buildSequence(input: BuildInput): BuildResult {
       const motion = a.kind === 'image' ? pickMotion(prefs, shots.length + 1, prevMotion, portrait) : 'none';
       prevMotion = motion;
       const c = clip(a.id, a.name, t, len, 0, motion, prefs.motionAmount);
+      // comic pages with detected panels are read panel by panel when the shot allows it
+      const nPanels = a.panels ? Math.min(a.panels.length, Math.floor(framesToSeconds(len, rate) / prefs.secondsPerPanel)) : 0;
+      if (prefs.panelReading && a.kind === 'image' && v && a.panels && a.panels.length >= 2 && nPanels >= 2) {
+        const imgAspect = v.width / v.height;
+        c.motion = { kind: 'panels', amount: 0, path: a.panels.slice(0, nPanels).map((p) => windowFor(p, imgAspect, settings.width / settings.height)) };
+      }
       // stills whose aspect differs from the frame (portrait pages, covers) get a blurred fill
-      if (a.kind === 'image' && v && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
+      if (a.kind === 'image' && v && c.motion.kind !== 'panels' && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
       v1.clips.push(c);
       shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: choice.reasons, text: beat.text });
       recent.push(a.id);

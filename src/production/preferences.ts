@@ -15,7 +15,11 @@ export interface ProductionPreferences {
   shotTarget: number;
   shotMax: number;
   motionAmount: number;
-  motionWeights: Record<Exclude<MotionKind, 'none'>, number>;
+  motionWeights: Record<Exclude<MotionKind, 'none' | 'panels'>, number>;
+  /** Read comic pages panel by panel when panels are detected and the shot is long enough. */
+  panelReading: boolean;
+  /** Seconds spent per panel. */
+  secondsPerPanel: number;
   /** Dissolve between sections (frames); 0 = hard cut. */
   sectionDissolveFrames: number;
   /** Share of in-section cuts that get a short dissolve (0..1). */
@@ -37,6 +41,8 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   shotMax: 8,
   motionAmount: 0.12,
   motionWeights: { 'zoom-in': 3, 'zoom-out': 2, 'pan-left': 1, 'pan-right': 1, 'pan-up': 0.5, 'pan-down': 0.5 },
+  panelReading: true,
+  secondsPerPanel: 1.8,
   sectionDissolveFrames: 15,
   dissolveShare: 0,
   subtitles: true,

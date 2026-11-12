@@ -71,6 +71,8 @@ export interface MediaAsset {
   /** Optional preview proxy (relative to the project cache dir). */
   proxy?: string;
   rights?: MediaRights;
+  /** Detected comic panels (normalised rects, reading order) for page-like stills. */
+  panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
   tags?: string[];
 }
@@ -85,12 +87,14 @@ export interface ClipTransform {
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
 
-export type MotionKind = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
+export type MotionKind = 'none' | 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down' | 'panels';
 
 /** Camera move inside the clip's frame (Ken Burns). `amount` = extra zoom (0.15 = 15%). */
 export interface ClipMotion {
   kind: MotionKind;
   amount: number;
+  /** For 'panels': viewing windows (normalised to the image) visited in order; the clip fills the frame. */
+  path?: { x: number; y: number; w: number; h: number }[];
 }
 
 export const NO_MOTION: ClipMotion = { kind: 'none', amount: 0 };

@@ -8,7 +8,7 @@
  *   drift by more than ~3 frames. While paused, elements are seeked exactly to the frame.
  * - Clips starting within the next 2 s are pre-loaded and pre-seeked to avoid gaps on cuts.
  */
-import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, motionAt, planSequence, rampAt, rateToNumber } from '../core';
+import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, motionAt, pathAt, planSequence, rampAt, rateToNumber } from '../core';
 import { mediaUrl } from '../shared/api';
 
 interface Layer {
@@ -179,6 +179,20 @@ export class PreviewEngine {
     const s = this.scale;
     el.style.width = `${ow * s}px`;
     el.style.height = `${oh * s}px`;
+    if (clip.motion?.kind === 'panels' && clip.motion.path?.length) {
+      // panel reading: same window path as the exporter, the still fills the whole frame
+      const win = pathAt(clip.motion.path, progress);
+      const sw = W / win.w;
+      const sh = H / win.h;
+      el.style.width = `${sw * s}px`;
+      el.style.height = `${sh * s}px`;
+      el.style.transformOrigin = '0 0';
+      el.style.transform = `translate(${-win.x * sw * s}px, ${-win.y * sh * s}px)`;
+      el.style.clipPath = '';
+      el.style.opacity = String(tr.opacity * ramp);
+      el.style.zIndex = String(z);
+      return;
+    }
     // Ken Burns identical to the exporter: scale by zoom, crop window offset by pan, clip to the box.
     const m = motionAt(clip.motion, progress);
     const cx = ((ow * m.zoom - ow) / 2) * (1 + m.panX);

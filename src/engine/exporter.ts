@@ -21,6 +21,8 @@ import {
   rateToNumber,
   captionsToAss,
   motionExpr,
+  pathExpr,
+  PANEL_OVERFLOW,
   planSequence,
   sequenceDuration,
 } from '../core';
@@ -122,8 +124,27 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
     const x = Math.round((W - ow) / 2 + tr.x);
     const y = Math.round((H - oh) / 2 + tr.y);
     const chain = [`fps=${rateStr}`, 'setpts=PTS-STARTPTS', `trim=end_frame=${p.frames}`, 'setpts=PTS-STARTPTS'];
+    let panelsFull = false;
     const mo = it.clip.motion;
-    if (mo && mo.kind !== 'none' && mo.amount > 0) {
+    if (mo && mo.kind === 'panels' && mo.path && mo.path.length) {
+      // panel reading: the clip fills the whole frame; the window path drives scale + crop
+      const itemSec = framesToSeconds(it.end - it.start, r);
+      const off = framesToSeconds(Math.max(it.start, range.start) - it.start, r);
+      const tt = (e: string) => e.replace(/\bt\b/g, `(t+${f6(off)})`);
+      // pad the page so windows may extend past it (dark background), then map windows into padded space
+      const E = PANEL_OVERFLOW;
+      const padded = mo.path.map((q) => ({ x: (q.x + E.x) / (1 + 2 * E.x), y: (q.y + E.y) / (1 + 2 * E.y), w: q.w / (1 + 2 * E.x), h: q.h / (1 + 2 * E.y) }));
+      const X = tt(pathExpr(padded, 'x', itemSec));
+      const Y = tt(pathExpr(padded, 'y', itemSec));
+      const PW = tt(pathExpr(padded, 'w', itemSec));
+      const PH = tt(pathExpr(padded, 'h', itemSec));
+      chain.push(
+        `pad=w=trunc(iw*${1 + 2 * E.x}/2)*2:h=trunc(ih*${1 + 2 * E.y}/2)*2:x=iw*${E.x}:y=ih*${E.y}:color=0x08080A`,
+        `scale=w='trunc(${W}/(${PW})/2)*2':h='trunc(${H}/(${PH})/2)*2':eval=frame:flags=bicubic`,
+        `crop=${W}:${H}:x='min(iw-${W},max(0,(${X})*iw))':y='min(ih-${H},max(0,(${Y})*ih))'`,
+      );
+      panelsFull = true;
+    } else if (mo && mo.kind !== 'none' && mo.amount > 0) {
       // Ken Burns: per-frame scale of the fitted frame, then a fixed-size crop that pans.
       const itemSec = framesToSeconds(it.end - it.start, r);
       const off = framesToSeconds(Math.max(it.start, range.start) - it.start, r);
@@ -150,6 +171,13 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
     if (p.fin > 0) fades.push(`fade=t=in:s=0:n=${p.fin}:alpha=1`);
     if (p.fout > 0) fades.push(`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`);
     const offset = `setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`;
+    if (panelsFull) {
+      filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
+      const nx = `ov${ov++}`;
+      filters.push(`[${last}][v${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nx}]`);
+      last = nx;
+      continue;
+    }
     if (it.clip.fill === 'blur' && (ow < W || oh < H)) {
       // blurred, darkened cover-scaled copy fills the frame behind the fitted picture
       const head = chain.slice(0, 4).join(',');
