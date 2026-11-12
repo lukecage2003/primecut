@@ -30,8 +30,11 @@ export interface ProductionPreferences {
   subtitles: boolean;
   sectionTitles: boolean;
   lowerThirds: boolean;
-  /** Music bed level relative to narration (dB). */
+  /** Music bed level relative to narration while the narrator speaks (dB). */
   musicRelativeDb: number;
+  /** Extra attenuation of the music under the voice (automatic ducking, dB, ≤ 0; 0 = off).
+   *  Between sentences the music rises by this amount. */
+  duckDepthDb: number;
   narrationLufs: number;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
@@ -54,6 +57,7 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   sectionTitles: true,
   lowerThirds: true,
   musicRelativeDb: -20,
+  duckDepthDb: -8,
   narrationLufs: -16,
   avoidRepeatWithin: 4,
 };
@@ -66,6 +70,8 @@ export interface EditStyle {
   dissolves: number;
   cuts: number;
   musicRelativeDb: number | null;
+  /** Ducking depth on the music track (null = no music / no ducking). */
+  duckDepthDb?: number | null;
   subtitles: boolean;
 }
 
@@ -118,6 +124,10 @@ export function adaptPreferences(prefs: ProductionPreferences, generated: EditSt
     // an explicit level change by the user is adopted as-is
     next.musicRelativeDb = clamp(prefs.musicRelativeDb + (edited.musicRelativeDb - generated.musicRelativeDb), -40, -6);
     changes.push(`music level ${prefs.musicRelativeDb.toFixed(1)} dB → ${next.musicRelativeDb.toFixed(1)} dB`);
+  }
+  if (edited.duckDepthDb != null && generated.duckDepthDb != null && Math.abs(edited.duckDepthDb - generated.duckDepthDb) > 0.5) {
+    next.duckDepthDb = clamp(edited.duckDepthDb, -24, 0);
+    changes.push(`music ducking ${(prefs.duckDepthDb ?? -8).toFixed(1)} dB → ${next.duckDepthDb.toFixed(1)} dB`);
   }
   if (edited.subtitles !== generated.subtitles) {
     next.subtitles = edited.subtitles;

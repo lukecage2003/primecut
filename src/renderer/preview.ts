@@ -8,7 +8,7 @@
  *   drift by more than ~3 frames. While paused, elements are seeked exactly to the frame.
  * - Clips starting within the next 2 s are pre-loaded and pre-seeked to avoid gaps on cuts.
  */
-import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, motionAt, pathAt, planSequence, rampAt, rateToNumber } from '../core';
+import { type Clip, type GainKey, type MediaAsset, type Project, type Sequence, duckEnvelope, framesToSeconds, gainAt, trackActivity, motionAt, pathAt, planSequence, rampAt, rateToNumber } from '../core';
 import { mediaUrl } from '../shared/api';
 
 interface Layer {
@@ -102,8 +102,25 @@ export class PreviewEngine {
   }
 
   /** Renders the frame. `playing` lets media elements run freely with drift correction. */
-  render(project: Project, seq: Sequence, frame: number, playing: boolean) {
+  /** Duck envelopes per track, recomputed only when the sequence or the peaks change. */
+  private duckCache: { seq: Sequence | null; peaks: unknown; keys: Map<string, GainKey[]> } = { seq: null, peaks: null, keys: new Map() };
+
+  private duckKeys(project: Project, seq: Sequence, peaks: Record<string, Uint8Array>): Map<string, GainKey[]> {
+    if (this.duckCache.seq === seq && this.duckCache.peaks === peaks) return this.duckCache.keys;
+    const keys = new Map<string, GainKey[]>();
+    for (const t of seq.tracks) {
+      if (t.kind !== 'audio' || !t.duck) continue;
+      const src = seq.tracks.find((x) => x.id === t.duck!.by);
+      if (!src || src.disabled) continue;
+      keys.set(t.id, duckEnvelope(trackActivity(seq, project.media, src.id, peaks, t.duck.threshold), t.duck));
+    }
+    this.duckCache = { seq, peaks, keys };
+    return keys;
+  }
+
+  render(project: Project, seq: Sequence, frame: number, playing: boolean, peaks: Record<string, Uint8Array> = {}) {
     this.tick++;
+    const ducks = this.duckKeys(project, seq, peaks);
     const rate = seq.settings.frameRate;
     const fps = rateToNumber(rate);
     const { width: W, height: H } = seq.settings;
@@ -141,7 +158,9 @@ export class PreviewEngine {
       }
       if (el instanceof HTMLMediaElement) {
         if (kind === 'audio') {
-          const lin = Math.pow(10, clip.gainDb / 20) * ramp;
+          const env = ducks.get(it.track.id);
+          const duckDb = env ? gainAt(env, framesToSeconds(frame, rate)) : 0;
+          const lin = Math.pow(10, (clip.gainDb + duckDb) / 20) * ramp;
           if (l.gain) l.gain.gain.value = lin;
           else el.volume = Math.min(1, lin);
         }

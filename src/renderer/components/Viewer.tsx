@@ -44,7 +44,7 @@ export function Viewer() {
       const key = [currentProject(e), e.playhead, e.playing, e.proxies, e.mediaStatus];
       if (key.every((k, i) => k === last[i])) return;
       last = key;
-      engine.render(currentProject(e), currentSequence(e), e.playhead, e.playing);
+      engine.render(currentProject(e), currentSequence(e), e.playhead, e.playing, e.peaks);
     };
     const off = store.subscribe(render);
     render();
@@ -57,7 +57,7 @@ export function Viewer() {
   useEffect(() => {
     engineRef.current?.setScale(size.w / seqW);
     const e = store.state.editor;
-    if (e) engineRef.current?.render(currentProject(e), currentSequence(e), e.playhead, e.playing);
+    if (e) engineRef.current?.render(currentProject(e), currentSequence(e), e.playhead, e.playing, e.peaks);
   }, [size, seqW]);
 
   return (

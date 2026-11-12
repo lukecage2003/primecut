@@ -3,6 +3,7 @@
  * preview and the exporter use like any hand-made edit. Everything stays editable afterwards.
  */
 import {
+  DEFAULT_DUCK,
   type Caption,
   type Clip,
   type MediaAsset,
@@ -196,8 +197,11 @@ export function buildSequence(input: BuildInput): BuildResult {
   if (input.music?.probe.audio) {
     const m = input.music;
     const loopLen = secondsToFrames(m.probe.durationSec, rate, 'floor');
-    const level = prefs.narrationLufs + prefs.musicRelativeDb;
-    const gain = input.musicLufs != null && Number.isFinite(input.musicLufs) ? clampDb(level - input.musicLufs) : prefs.musicRelativeDb;
+    // the clip gain is the level between sentences; ducking lowers it under the voice
+    const duck = Math.min(0, prefs.duckDepthDb ?? 0);
+    const level = prefs.narrationLufs + prefs.musicRelativeDb - duck;
+    const gain = input.musicLufs != null && Number.isFinite(input.musicLufs) ? Math.max(-40, Math.min(12, level - input.musicLufs)) : prefs.musicRelativeDb - duck;
+    if (duck < 0) a2.duck = { ...DEFAULT_DUCK, by: a1.id, depthDb: duck };
     for (let t = 0; t < endFrame && loopLen > 0; t += loopLen) {
       const c = clip(m.id, m.name, t, Math.min(loopLen, endFrame - t));
       c.gainDb = gain;

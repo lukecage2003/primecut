@@ -25,8 +25,12 @@ import {
   PANEL_OVERFLOW,
   planSequence,
   sequenceDuration,
+  duckEnvelope,
+  envelopeToSendcmd,
+  trackActivity,
 } from '../core';
 import { CancelledError, ffmpeg, ffprobe } from './ffmpeg';
+import { cacheDirs, makePeaks } from './media';
 
 export interface ExportRange {
   start: number; // frames
@@ -75,7 +79,13 @@ export function escapeFilterPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
 }
 
-export function buildExportPlan(project: Project, seq: Sequence, output: string, opts: { range?: ExportRange; encoder?: string; assFile?: string } = {}): ExportPlan {
+export function buildExportPlan(
+  project: Project,
+  seq: Sequence,
+  output: string,
+  /** duckFiles: trackId → sendcmd script (from envelopeToSendcmd) for ducked audio tracks. */
+  opts: { range?: ExportRange; encoder?: string; assFile?: string; duckFiles?: Record<string, string> } = {},
+): ExportPlan {
   const s = project.exportSettings;
   const { width: W, height: H, frameRate: r, sampleRate: SR } = seq.settings;
   const rateStr = `${r.num}/${r.den}`;
@@ -201,6 +211,7 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
 
   // Audio
   const audioLabels: string[] = [];
+  const busInputs: Record<string, string[]> = {};
   for (const it of plan.filter((x) => x.kind === 'audio')) {
     const p = visible(it);
     if (!p) continue;
@@ -223,9 +234,19 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
     }
     chain.push(`adelay=delays=${delaySamples}S:all=1`);
     filters.push(`[${idx}:a]${chain.join(',')}[a${idx}]`);
-    audioLabels.push(`[a${idx}]`);
+    if (opts.duckFiles?.[it.track.id]) (busInputs[it.track.id] ??= []).push(`[a${idx}]`);
+    else audioLabels.push(`[a${idx}]`);
   }
   const totalSamples = Math.round(durSec * SR);
+  // ducked tracks: sub-mix, then the shared gain envelope as sample-accurate volume commands
+  for (const [trackId, labels] of Object.entries(busInputs)) {
+    const b = duckFilterName(trackId);
+    filters.push(
+      `anullsrc=r=${SR}:cl=stereo,atrim=end_sample=${totalSamples}[${b}z];[${b}z]${labels.join('')}amix=inputs=${labels.length + 1}:duration=first:normalize=0:dropout_transition=0,` +
+        `asendcmd=f='${escapeFilterPath(opts.duckFiles![trackId]!)}',volume@${b}=volume=1:eval=frame[${b}]`,
+    );
+    audioLabels.push(`[${b}]`);
+  }
   filters.push(`anullsrc=r=${SR}:cl=stereo,atrim=end_sample=${totalSamples}[abase]`);
   if (audioLabels.length) {
     filters.push(`[abase]${audioLabels.join('')}amix=inputs=${audioLabels.length + 1}:duration=first:normalize=0:dropout_transition=0,atrim=end_sample=${totalSamples}[aout]`);
@@ -288,6 +309,8 @@ export interface ExportJob {
   output: string;
   range?: ExportRange;
   encoder?: string;
+  /** Project cache folder (waveform peaks for ducking); defaults to a cache next to the output. */
+  cacheDir?: string;
   onProgress?: (fraction: number) => void;
   onLog?: (line: string) => void;
   signal?: AbortSignal;
@@ -309,7 +332,8 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
     assFile = path.join(path.dirname(job.output), `.${path.basename(job.output, ext)}.captions.ass`);
     await fsp.writeFile(assFile, captionsToAss(seq, seq.captions, job.range?.start ?? 0), 'utf8');
   }
-  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder, assFile });
+  const duckFiles = await writeDuckFiles(job.project, seq, job.cacheDir ?? path.join(path.dirname(job.output), '.primestone-cache'), path.dirname(job.output), `.${path.basename(job.output, ext)}`, job.range?.start ?? 0, job.signal);
+  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder, assFile, duckFiles });
   job.onLog?.(`ffmpeg ${plan.args.length} args, ${plan.frames} frames`);
   try {
     await ffmpeg(plan.args, {
@@ -321,10 +345,12 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
   } catch (e) {
     await fsp.rm(tmp, { force: true });
     if (assFile) await fsp.rm(assFile, { force: true });
+    for (const f of Object.values(duckFiles)) await fsp.rm(f, { force: true });
     if (e instanceof CancelledError) throw e;
     throw e;
   }
   if (assFile) await fsp.rm(assFile, { force: true });
+  for (const f of Object.values(duckFiles)) await fsp.rm(f, { force: true });
   const result = await verifyExport(tmp, seq, plan.frames);
   if (!result.ok) {
     await fsp.rm(tmp, { force: true });
@@ -334,3 +360,28 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
   job.onProgress?.(1);
   return result;
 }
+
+/** Computes each ducked track's envelope from the source track's waveform peaks (cached). */
+export async function writeDuckFiles(project: Project, seq: Sequence, cacheRoot: string, dir: string, prefix: string, rangeStartFrame: number, signal?: AbortSignal): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const ducked = seq.tracks.filter((t) => t.kind === 'audio' && t.duck && !t.disabled && seq.tracks.some((x) => x.id === t.duck!.by));
+  if (!ducked.length) return out;
+  const cache = cacheDirs(cacheRoot);
+  await fsp.mkdir(cache.peaks, { recursive: true });
+  const peaks: Record<string, Uint8Array | undefined> = {};
+  for (const t of ducked) {
+    const src = seq.tracks.find((x) => x.id === t.duck!.by)!;
+    if (src.disabled) continue;
+    for (const c of src.clips) {
+      const m = project.media[c.mediaId];
+      if (m && !(m.id in peaks)) peaks[m.id] = (await makePeaks(m, cache, signal)) ?? undefined;
+    }
+    const keys = duckEnvelope(trackActivity(seq, project.media, src.id, peaks, t.duck!.threshold), t.duck!);
+    const f = path.join(dir, `${prefix}.duck-${t.id}.cmd`);
+    await fsp.writeFile(f, envelopeToSendcmd(keys, duckFilterName(t.id), framesToSeconds(rangeStartFrame, seq.settings.frameRate)));
+    out[t.id] = f;
+  }
+  return out;
+}
+
+export const duckFilterName = (trackId: string) => `duck_${trackId.replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}`;

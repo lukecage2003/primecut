@@ -172,7 +172,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
       resources: { cpuSlots: 2, gpu: !encoder.startsWith('lib') },
       run: async (c) => {
         c.log(`encoder: ${encoder}`);
-        const r = await exportSequence({ project: req.project, sequenceId: req.sequenceId, output: req.output, encoder, signal: c.signal, onProgress: (p) => c.progress(p), onLog: c.log });
+        const r = await exportSequence({ project: req.project, sequenceId: req.sequenceId, output: req.output, encoder, cacheDir: projectPaths(req.projectFile).cache, signal: c.signal, onProgress: (p) => c.progress(p), onLog: c.log });
         const outcome: ExportOutcome = { output: req.output, encoder, frames: r.frames, durationSec: r.durationSec, width: r.width, height: r.height };
         exportResults.set(id, outcome);
         c.progress(1, `Verified · ${r.frames} frames · ${r.width}×${r.height}`);

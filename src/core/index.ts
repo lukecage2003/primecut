@@ -10,3 +10,4 @@ export * from './motion';
 export * from './captions';
 export * from './panels';
 export * from './generators';
+export * from './ducking';

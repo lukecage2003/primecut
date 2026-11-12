@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Clip, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
+import { type Clip, DEFAULT_DUCK, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
 import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead, updateVisual } from '../actions';
 import { VISUAL_KINDS } from '../../core';
 import { store } from '../store';
@@ -236,6 +236,7 @@ export function Inspector() {
                   onPreview={(v) => setProps(audio.clip.id, { gainDb: v }, 'Gain', false)}
                   onCommit={(v) => setProps(audio.clip.id, { gainDb: v }, 'Set gain', true)}
                 />
+                <DuckControl seq={seq} trackId={audio.track.id} />
               </>
             )}
           </div>
@@ -330,6 +331,51 @@ function VisualEditor({ mediaId }: { mediaId: string }) {
         <button className="btn ghost" disabled={busy} onClick={() => void apply({ seed: g.seed + 1 })}>Shuffle</button>
         <span />
       </div>
+    </div>
+  );
+}
+
+/** Automatic ducking of the selected clip's track under another audio track (usually the narration). */
+function DuckControl({ seq, trackId }: { seq: Sequence; trackId: string }) {
+  const track = seq.tracks.find((t) => t.id === trackId);
+  const sources = seq.tracks.filter((t) => t.kind === 'audio' && t.id !== trackId);
+  if (!track || !sources.length) return null;
+  const duck = track.duck;
+  const set = (d: typeof duck, label: string) =>
+    edit(label, (s) => {
+      const t = s.tracks.find((x) => x.id === trackId);
+      if (t) t.duck = d ? { ...d } : undefined;
+    });
+  return (
+    <div data-testid="insp-duck">
+      <label className="row" style={{ gap: 6, marginTop: 6 }}>
+        <input
+          type="checkbox"
+          checked={!!duck}
+          onChange={(e) => set(e.target.checked ? { ...DEFAULT_DUCK, by: sources[0]!.id } : undefined, e.target.checked ? 'Enable ducking' : 'Disable ducking')}
+        />
+        Lower this track under
+        <select className="input" style={{ width: 90 }} disabled={!duck} value={duck?.by ?? sources[0]!.id} onChange={(e) => duck && set({ ...duck, by: e.target.value }, 'Ducking source')}>
+          {sources.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {duck && (
+        <Slider
+          label="Ducking depth"
+          testid="insp-duck-depth"
+          value={duck.depthDb}
+          min={-24}
+          max={0}
+          step={0.5}
+          fmt={(v) => `${v.toFixed(1)} dB`}
+          onPreview={() => undefined}
+          onCommit={(v) => set({ ...duck, depthDb: v }, 'Ducking depth')}
+        />
+      )}
     </div>
   );
 }

@@ -152,6 +152,21 @@ export interface Track {
   /** Clips sorted by start, never overlapping. */
   clips: Clip[];
   transitions: Transition[];
+  /** Audio: automatic ducking under another track (e.g. music under narration). */
+  duck?: TrackDuck;
+}
+
+export interface TrackDuck {
+  /** Track whose signal lowers this one. */
+  by: string;
+  /** Attenuation while the source is active (negative dB). */
+  depthDb: number;
+  attackMs: number;
+  releaseMs: number;
+  /** Stays down this long after the source stops (avoids pumping between words). */
+  holdMs: number;
+  /** Activity threshold on the source's peak level (0..1). */
+  threshold: number;
 }
 
 export interface Marker {
