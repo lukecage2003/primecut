@@ -44,6 +44,8 @@ Honest list; each item has a planned phase.
 - Procedural compositions render at ≈ 2× real time on 4 CPU cores (1080p): a 90-minute video with
   no illustrations needs hours on such a machine. GPU acceleration of compositions is not done.
 - Knowledge base: ~50 curated entries + names learned from each script (marked uncertain, no facts).
+  Comic references are read from sources, narration and file names (series/volume/issues/year);
+  pictures without a number or year in their name cannot be checked against a cited issue.
 - No web media providers yet (rights model and UI exist; no provider implemented or tested).
 - PDF import: multi-column layouts and tables inside the narration are not handled; production
   tables in annexes are kept as notes, not applied to the edit.

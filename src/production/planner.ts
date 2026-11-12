@@ -8,6 +8,7 @@ import { type EntityMention, EntityIndex } from './entities';
 import type { ProductionPreferences } from './preferences';
 import type { ParsedScript } from './script';
 import { contentWords, normalize, tokens } from './text';
+import { type ComicRef, compareRefs, comicRefsIn, parseMediaRef, sourceRefs } from './comicRefs';
 
 export interface Beat {
   index: number;
@@ -70,6 +71,8 @@ export interface LibraryItem {
   tokens: Set<string>;
   entityIds: Set<string>;
   issues: Set<string>;
+  /** Comic reference read from the file name (series, volume, issues, year), when it has one. */
+  ref?: ComicRef | null;
 }
 
 export function indexLibrary(assets: MediaAsset[], index = new EntityIndex()): LibraryItem[] {
@@ -84,6 +87,7 @@ export function indexLibrary(assets: MediaAsset[], index = new EntityIndex()): L
         tokens: new Set(tokens(label)),
         entityIds: new Set(ents.map((e) => e.entityId).filter((x): x is string => !!x)),
         issues: new Set([...label.matchAll(/(?:#|n°|no\.?|issue|num[eé]ro)\s?_?(\d{1,4})/gi)].map((m) => String(Number(m[1])))),
+        ref: parseMediaRef(asset.name),
       };
     });
 }
@@ -95,9 +99,32 @@ export interface ShotChoice {
   quality: 'strong' | 'weak' | 'missing';
 }
 
+const beatRefCache = new WeakMap<Beat, ComicRef[]>();
+/** References the beat cites: its sources first, then the narration itself. */
+export function beatRefs(beat: Beat): ComicRef[] {
+  let r = beatRefCache.get(beat);
+  if (!r) {
+    r = [...beat.sources.flatMap(sourceRefs), ...comicRefsIn(beat.text)];
+    beatRefCache.set(beat, r);
+  }
+  return r;
+}
+
 export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
+  // a picture named after a precise comic is checked against the references the passage cites:
+  // same issue is strong evidence; another issue/volume/decade of a same-named series is a conflict
+  if (item.ref) {
+    const verdicts = beatRefs(beat).map((r) => compareRefs(r, item.ref!)).filter((v) => v.verdict !== 'unrelated');
+    const best = verdicts.find((v) => v.verdict === 'same-issue') ?? verdicts.find((v) => v.verdict === 'same-series');
+    if (best) {
+      score += best.verdict === 'same-issue' ? 7 : 2;
+      reasons.push(`${best.reason} (read from the file name, not authenticated)`);
+    } else if (verdicts.length) {
+      return { score: -10, reasons: [verdicts[0]!.reason] };
+    }
+  }
   for (const e of beat.entities) {
     if (e.entityId && item.entityIds.has(e.entityId)) {
       score += e.kind === 'character' || e.kind === 'team' ? 6 : 4;
@@ -146,6 +173,7 @@ export function chooseMedia(beat: Beat, library: LibraryItem[], recent: string[]
   const window = recent.slice(-prefs.avoidRepeatWithin);
   for (const item of library) {
     const { score, reasons } = scoreItem(beat, item);
+    if (score < 0) continue; // another work with the same name: never shown for this passage
     let adj = score;
     const r: string[] = [...reasons];
     if (score === 0) {

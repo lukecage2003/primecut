@@ -207,6 +207,23 @@ describe('timeline construction', () => {
     expect(r.shots[0]!.reasons).toContain('no media with usable rights');
   });
 
+  it('a same-named work from another year or issue is never used for a cited comic', () => {
+    const img = (name: string) => fakeMedia({ name, kind: 'image', video: true, durationSec: 0 });
+    const sw15 = img('Secret Wars 2015 #1.jpg');
+    const sw84 = img('Secret Wars #1 (1984).jpg');
+    const script = parseScript('Le Beyonder enlève les héros.\n\n[SOURCE: Marvel Super-Heroes Secret Wars #1 (1984) — Jim Shooter]');
+    const narration = fakeMedia({ name: 'v.wav', kind: 'audio', video: false, durationSec: 4 });
+    const p = createProject('P');
+    const build = (library: typeof sw15[]) => buildSequence({ name: 'x', settings: p.sequences[p.activeSequenceId]!.settings, script, alignment: alignByPauses(script.sentences, [{ start: 0, end: 4 }]), narration, library, prefs: DEFAULT_PREFERENCES });
+    const both = build([sw15, sw84]);
+    expect(both.sequence.tracks[0]!.clips.map((c) => c.mediaId)).toContain(sw84.id);
+    expect(both.sequence.tracks[0]!.clips.map((c) => c.mediaId)).not.toContain(sw15.id);
+    expect(both.shots[0]!.reasons.join(' ')).toMatch(/same issue: Secret Wars #1 \(1984\).*not authenticated/);
+    // only the 2015 picture: it is not shown as if it were the 1984 comic
+    const wrong = build([sw15]);
+    expect(wrong.sequence.tracks[0]!.clips.map((c) => c.mediaId)).not.toContain(sw15.id);
+  });
+
   it('QC auto-fix closes gaps and merges repeats', () => {
     const { sequence, media } = produce();
     const v1 = sequence.tracks[0]!;

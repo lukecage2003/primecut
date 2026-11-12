@@ -117,3 +117,14 @@ media item (`derived.from`): the recording is never modified and the Inspector s
 back in one undoable edit. Rejected: RNNoise (`arnndn`) — needs a model file Primestone would have to
 download; `loudnorm` dynamic mode — alters dynamics and its look-ahead complicates sync.
 
+## ADR-019 — Structured comic references; conflicts exclude a picture
+
+Sources, narration and media file names are parsed into `{series, volume, issues, year}`
+(`production/comicRefs.ts`, rule-based). A picture whose file name names a precise comic is compared
+with the references the passage cites: same issue → strong match (reason says "read from the file
+name, not authenticated"); same series → small bonus; **another issue, volume or decade of a
+same-named series → the picture is excluded for that passage** (Secret Wars 1984 ≠ 2015, Batman
+#676 ≠ #35). Series titles must match exactly after normalisation (only publisher prefixes such as
+"Marvel Super-Heroes" are ignored) so "Batman" never matches "Batman and Robin". Nothing is looked
+up online; a picture is never presented as authenticated.
+

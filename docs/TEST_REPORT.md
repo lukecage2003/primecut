@@ -6,7 +6,7 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core + production + P-CORE + voice) | `npx vitest run tests/unit` | ✅ 75 / 75 |
+| Unit (core + production + P-CORE + voice + comic refs) | `npx vitest run tests/unit` | ✅ 80 / 80 |
 | Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 24 / 24 |
 | End-to-end (Electron UI, Xvfb, software WebGL) | `npx playwright test` | ✅ 6 / 6 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
