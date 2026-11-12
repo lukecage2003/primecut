@@ -27,6 +27,8 @@ export interface SceneSetup {
   seed: number;
   /** 'core' (rings + particles), 'floating' (logo alone, discreet), 'minimal'. */
   composition: 'core' | 'floating' | 'minimal';
+  /** Particle density factor (quality level). */
+  particles?: number;
 }
 
 const rnd = (seed: number) => {
@@ -93,6 +95,7 @@ export class PCoreScene {
 
   constructor(readonly canvas: HTMLCanvasElement, private setup: SceneSetup) {
     const { width, height, settings } = setup;
+    this.n = Math.round(1400 * Math.max(0.25, Math.min(2, setup.particles ?? 1)));
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true, premultipliedAlpha: true });
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(width, height, false);

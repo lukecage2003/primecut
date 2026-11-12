@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { addMarker, framesToSeconds } from '../../core';
 import { DEFAULT_PCORE_SETTINGS, type PCoreSettings, markerEvents } from '../../pcore/expression';
 import { DEFAULT_PLACEMENT, type PlacementSettings } from '../../pcore/placement';
+import { PCORE_QUALITY, type PCoreQuality } from '../../pcore/quality';
 import type { AlphaCheck, PCoreFormat } from '../../shared/api';
 import { mediaUrl } from '../../shared/api';
 import { api } from '../api';
@@ -46,7 +47,8 @@ export function PCoreStudio() {
   const [format, setFormat] = useState<PCoreFormat>('mov-prores4444');
   const [res, setRes] = useState('1920×1080');
   const [withAudio, setWithAudio] = useState(false);
-  const [lastExport, setLastExport] = useState<{ path: string; check: AlphaCheck } | null>(null);
+  const [lastExport, setLastExport] = useState<{ path: string; check: AlphaCheck; quality: PCoreQuality; renderSec: number; fps: number } | null>(null);
+  const [exportQuality, setExportQuality] = useState<PCoreQuality>('final');
   const [mode, setMode] = useState<'off' | 'hero' | 'always'>('hero');
   const canvas = useRef<HTMLCanvasElement>(null);
   const s: PCoreSettings = { ...DEFAULT_PCORE_SETTINGS, ...(appSettings.pcore?.settings ?? {}) };
@@ -227,7 +229,29 @@ export function PCoreStudio() {
                 <input type="checkbox" checked={pl.growOnReveal} onChange={(ev) => setPl({ growOnReveal: ev.target.checked })} /> Grow on reveals
               </label>
             </div>
+            <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label className="row" style={{ gap: 6 }}>
+                <input type="checkbox" data-testid="pcore-fixed" checked={!!pl.manual?.enabled} onChange={(ev) => setPl({ manual: { x: 0.5, y: 0.45, size: 0.5, ...pl.manual, enabled: ev.target.checked } })} /> Fixed position (overrides adaptive placement in every production)
+              </label>
+              {pl.manual?.enabled && (
+                <>
+                  <Range label="Horizontal" value={pl.manual.x} min={0} max={1} step={0.01} onChange={(v) => setPl({ manual: { ...pl.manual!, x: v } })} />
+                  <Range label="Vertical" value={pl.manual.y} min={0} max={1} step={0.01} onChange={(v) => setPl({ manual: { ...pl.manual!, y: v } })} />
+                  <Range label="Size" value={pl.manual.size} min={0.05} max={1} step={0.01} onChange={(v) => setPl({ manual: { ...pl.manual!, size: v } })} />
+                </>
+              )}
+            </div>
             <div className="tiny">Each P-CORE clip lands on V2 and stays editable: move, resize, trim or delete it like any clip.</div>
+            <label className="field" style={{ maxWidth: 260 }}>
+              <span>Render quality in productions</span>
+              <select className="input" data-testid="pcore-quality" value={appSettings.pcore?.quality ?? 'high'} onChange={(ev) => void updateSettings({ pcore: { ...appSettings.pcore, quality: ev.target.value as PCoreQuality } })}>
+                {(Object.keys(PCORE_QUALITY) as PCoreQuality[]).map((q) => (
+                  <option key={q} value={q}>
+                    {PCORE_QUALITY[q].label} — {PCORE_QUALITY[q].renderScale}× render, {Math.round(PCORE_QUALITY[q].particles * 100)} % particles
+                  </option>
+                ))}
+              </select>
+            </label>
             {/* E. appearance */}
             <div className="section-title">Appearance</div>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -246,8 +270,15 @@ export function PCoreStudio() {
             {/* G. export */}
             <div className="section-title">Export (independent of the edit)</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select className="input" style={{ width: 150 }} value={exportQuality} onChange={(ev) => setExportQuality(ev.target.value as PCoreQuality)} data-testid="pcore-export-quality">
+                {(Object.keys(PCORE_QUALITY) as PCoreQuality[]).map((q) => (
+                  <option key={q} value={q}>
+                    {PCORE_QUALITY[q].label}
+                  </option>
+                ))}
+              </select>
               <select className="input" style={{ width: 280 }} value={format} onChange={(ev) => setFormat(ev.target.value as PCoreFormat)} data-testid="pcore-format">
-                <option value="mov-prores4444">ProRes 4444 .mov (alpha) — Premiere / Resolve</option>
+                <option value="mov-prores4444">ProRes 4444 .mov (10-bit alpha)</option>
                 <option value="mov-qtrle">QuickTime Animation .mov (lossless alpha)</option>
                 <option value="webm-vp9">WebM VP9 (alpha)</option>
                 <option value="png-sequence">PNG sequence (alpha)</option>
@@ -267,7 +298,7 @@ export function PCoreStudio() {
                 onClick={() =>
                   run('Exporting', async () => {
                     const [w, h] = RES[res]!;
-                    const r = await api.pcore.exportFile({ ...req, width: w, height: h, format, withAudio });
+                    const r = await api.pcore.exportFile({ ...req, width: w, height: h, format, withAudio, quality: exportQuality });
                     if (r) {
                       setLastExport(r);
                       toast(`P-CORE exported · alpha verified (${r.check.pixFmt}, ${r.check.frames} frames)`, 'success');
@@ -280,7 +311,7 @@ export function PCoreStudio() {
             </div>
             {lastExport && (
               <div className="tiny" data-testid="pcore-export-check">
-                {lastExport.path} — {lastExport.check.width}×{lastExport.check.height}, {lastExport.check.frames} frames, {lastExport.check.pixFmt}, alpha {lastExport.check.alphaMin}–{lastExport.check.alphaMax} ✓
+                {lastExport.path} — {lastExport.check.width}×{lastExport.check.height}, {lastExport.check.frames} frames, {lastExport.check.pixFmt}, alpha {lastExport.check.alphaMin}–{lastExport.check.alphaMax} ✓ · {PCORE_QUALITY[lastExport.quality].label}: rendered in {lastExport.renderSec.toFixed(1)} s ({lastExport.fps} frames/s on this computer)
               </div>
             )}
           </div>

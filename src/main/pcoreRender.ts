@@ -15,7 +15,7 @@ import { analyzeVoice } from '../pcore/audio';
 import { DEFAULT_PCORE_SETTINGS, type PCoreEvent } from '../pcore/expression';
 import { loadSettings } from './settings';
 import { ffmpegPaths } from '../engine/ffmpeg';
-import { type AlphaCheck, type PCoreFormat, pcoreEncoderArgs, validateAlpha } from '../engine/pcore';
+import { type AlphaCheck, PCORE_QUALITY, type PCoreFormat, type PCoreQuality, pcoreEncoderArgs, validateAlpha } from '../engine/pcore';
 import type { PCoreFrame, PCoreSettings } from '../pcore/expression';
 
 export interface PCoreRenderJob {
@@ -28,7 +28,7 @@ export interface PCoreRenderJob {
   seed: number;
   format: PCoreFormat;
   output: string;
-  quality?: 'preview' | 'final';
+  quality?: PCoreQuality;
   /** Narration window muxed into the file (mov/webm only) for a self-contained export. */
   audio?: { path: string; offsetSec: number };
 }
@@ -56,8 +56,16 @@ async function doRender(job: PCoreRenderJob, onProgress?: (f: number) => void, s
   await fsp.rm(tmp, { recursive: true, force: true });
   if (isSeq) await fsp.mkdir(tmp, { recursive: true });
   else await fsp.mkdir(path.dirname(job.output), { recursive: true });
-  const args = ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${job.width}x${job.height}`, '-framerate', `${job.fps.num}/${job.fps.den}`, '-i', 'pipe:0'];
+  // quality: render at renderScale × the output size, then downscale with premultiplied alpha
+  // (straight-alpha averaging would darken the glow edges)
+  const ql = PCORE_QUALITY[job.quality ?? 'standard'];
+  const rw = Math.max(16, Math.round((job.width * ql.renderScale) / 2) * 2);
+  const rh = Math.max(16, Math.round((job.height * ql.renderScale) / 2) * 2);
+  const args = ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${rw}x${rh}`, '-framerate', `${job.fps.num}/${job.fps.den}`, '-i', 'pipe:0'];
+
   if (job.audio && !isSeq) args.push('-ss', job.audio.offsetSec.toFixed(4), '-t', (total / fps).toFixed(4), '-i', job.audio.path, '-map', '0:v', '-map', '1:a', '-c:a', job.format === 'webm-vp9' ? 'libopus' : 'pcm_s16le');
+  // output-side filter (after every input, or FFmpeg would bind it to the audio input)
+  if (rw !== job.width || rh !== job.height) args.push('-vf', `format=gbrap,premultiply=inplace=1,scale=${job.width}:${job.height}:flags=${rw > job.width ? 'area' : 'bicubic'},unpremultiply=inplace=1`);
   args.push(...pcoreEncoderArgs(job.format, job.quality), '-frames:v', String(total));
   args.push(isSeq ? path.join(tmp, 'pcore_%06d.png') : tmp);
   const ff = spawn(ffmpegPaths().ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
@@ -81,7 +89,7 @@ async function doRender(job: PCoreRenderJob, onProgress?: (f: number) => void, s
   let endCleanup: () => void = () => undefined;
   const finishedCleanup = new Promise<void>((r) => (endCleanup = r));
   const finished = new Promise<void>((resolve, reject) => {
-    handle('pcore:job', () => ({ width: job.width, height: job.height, shape, artwork, settings: job.settings, seed: job.seed, composition: job.composition }));
+    handle('pcore:job', () => ({ width: rw, height: rh, shape, artwork, settings: job.settings, seed: job.seed, composition: job.composition, particles: ql.particles }));
     handle('pcore:next', () => {
       if (signal?.aborted || failure) return [];
       const batch = job.frames.slice(next, next + 8).map((p, k) => ({ i: next + k, t: (next + k) / fps, p }));
@@ -104,6 +112,10 @@ async function doRender(job: PCoreRenderJob, onProgress?: (f: number) => void, s
     };
     ipcMain.on('pcore:fail', onFail);
     signal?.addEventListener('abort', () => reject(new Error('Cancelled')), { once: true });
+    // FFmpeg exiting before every frame was written is a failure: report it at once, with its message
+    void ffDone.then((code) => {
+      if (written < total) reject(new Error(`FFmpeg stopped (code ${code}) before the end of the P-CORE render: ${ffErr.trim().split('\n').slice(-3).join(' ')}`));
+    });
     wc.on('render-process-gone', (_e, d) => reject(new Error(`P-CORE renderer crashed (${d.reason})`)));
     // watchdog: a renderer that produces nothing for 60 s has failed (no WebGL, script error…)
     let last = Date.now();
@@ -155,11 +167,12 @@ export async function renderPCoreAsset(asset: MediaAsset, narration: MediaAsset,
   const st = loadSettings();
   const settings = { ...DEFAULT_PCORE_SETTINGS, ...(st.pcore?.settings ?? {}) };
   const fps = seq.frameRate.num / seq.frameRate.den;
-  const key = crypto.createHash('sha256').update(JSON.stringify(['pcore-v1', narration.fingerprint, pc, settings, seq.frameRate])).digest('hex').slice(0, 20);
+  const quality = st.pcore?.quality ?? 'high';
+  const key = crypto.createHash('sha256').update(JSON.stringify(['pcore-v2', narration.fingerprint, pc, settings, seq.frameRate, quality])).digest('hex').slice(0, 20);
   const out = path.join(cacheDir, 'generated', `pcore-${pc.mode}-${key}.webm`);
   if (fs.existsSync(out)) return out;
   const frames = await pcoreFrames(narration.path, { offsetSec: pc.offsetSec, durationSec: pc.durationSec, fps, events: pc.events, settings, signal });
-  await renderPCore({ width: pc.size, height: pc.size, fps: seq.frameRate, frames, settings, composition: pc.composition, seed: pc.seed, format: 'webm-vp9', output: out }, undefined, signal);
+  await renderPCore({ width: pc.size, height: pc.size, fps: seq.frameRate, frames, settings, composition: pc.composition, seed: pc.seed, format: 'webm-vp9', quality, output: out }, undefined, signal);
   return out;
 }
 
@@ -195,7 +208,7 @@ export function registerPCoreIpc() {
     await renderPCore({ width: r.size, height: r.size, fps: r.fps, frames, settings, composition: r.composition, seed: 7, format: 'webm-vp9', quality: 'preview', output: out, audio: r.audioPath ? { path: r.audioPath, offsetSec: r.offsetSec } : undefined }, (f) => e.sender.send('pcore:progress', f));
     return out;
   });
-  ipcMain.handle('pcore:export', async (e, r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean }) => {
+  ipcMain.handle('pcore:export', async (e, r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean; quality?: PCoreQuality }) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const fmt = PCORE_FORMATS.find((f) => f.id === r.format)!;
     const pick = r.format === 'png-sequence' ? await dialog.showOpenDialog(w, { title: 'Folder for the PNG sequence', properties: ['openDirectory', 'createDirectory'] }) : await dialog.showSaveDialog(w, { title: 'Export P-CORE', defaultPath: `P-CORE${fmt.ext}`, filters: [{ name: fmt.label, extensions: [fmt.ext.slice(1)] }] });
@@ -204,7 +217,10 @@ export function registerPCoreIpc() {
     const settings = settingsNow();
     const fps = r.fps.num / r.fps.den;
     const frames = await pcoreFrames(r.audioPath, { offsetSec: r.offsetSec, durationSec: r.durationSec, fps, events: r.events, settings });
-    const check = await renderPCore({ width: r.width, height: r.height, fps: r.fps, frames, settings, composition: r.composition, seed: 7, format: r.format, quality: 'final', output: target, audio: r.withAudio && r.audioPath ? { path: r.audioPath, offsetSec: r.offsetSec } : undefined }, (f) => e.sender.send('pcore:progress', f));
-    return { path: target, check };
+    const t0 = Date.now();
+    const quality = r.quality ?? 'final';
+    const check = await renderPCore({ width: r.width, height: r.height, fps: r.fps, frames, settings, composition: r.composition, seed: 7, format: r.format, quality, output: target, audio: r.withAudio && r.audioPath ? { path: r.audioPath, offsetSec: r.offsetSec } : undefined }, (f) => e.sender.send('pcore:progress', f));
+    const renderSec = (Date.now() - t0) / 1000;
+    return { path: target, check, quality, renderSec, fps: +(frames.length / renderSec).toFixed(2) };
   });
 }

@@ -11,16 +11,20 @@ import { ffmpeg, ffprobe } from './ffmpeg';
 export type PCoreFormat = 'webm-vp9' | 'mov-prores4444' | 'mov-qtrle' | 'png-sequence';
 
 export const PCORE_FORMATS: { id: PCoreFormat; label: string; ext: string; note: string }[] = [
-  { id: 'mov-prores4444', label: 'ProRes 4444 (.mov, alpha)', ext: '.mov', note: 'Premiere Pro / Resolve / Final Cut; large files' },
+  { id: 'mov-prores4444', label: 'ProRes 4444 (.mov, alpha)', ext: '.mov', note: 'Mezzanine with 10-bit alpha; large files' },
   { id: 'mov-qtrle', label: 'QuickTime Animation (.mov, lossless alpha)', ext: '.mov', note: 'Lossless RGBA; very large files' },
   { id: 'webm-vp9', label: 'WebM VP9 (alpha)', ext: '.webm', note: 'Small; plays with transparency in browsers and in Primestone' },
   { id: 'png-sequence', label: 'PNG sequence (alpha)', ext: '', note: 'One PNG per frame in a folder' },
 ];
 
-export function pcoreEncoderArgs(format: PCoreFormat, quality: 'preview' | 'final' = 'final'): string[] {
+import { PCORE_QUALITY, type PCoreQuality } from '../pcore/quality';
+export { PCORE_QUALITY, type PCoreQuality };
+
+export function pcoreEncoderArgs(format: PCoreFormat, quality: PCoreQuality = 'final'): string[] {
+  const q = PCORE_QUALITY[quality];
   switch (format) {
     case 'webm-vp9':
-      return ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', quality === 'final' ? '18' : '32', '-row-mt', '1', '-deadline', quality === 'final' ? 'good' : 'realtime', '-cpu-used', quality === 'final' ? '2' : '6', '-auto-alt-ref', '0'];
+      return ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', String(q.crf), '-row-mt', '1', '-deadline', q.deadline, '-cpu-used', String(q.cpuUsed), '-auto-alt-ref', '0'];
     case 'mov-prores4444':
       return ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-alpha_bits', '16'];
     case 'mov-qtrle':

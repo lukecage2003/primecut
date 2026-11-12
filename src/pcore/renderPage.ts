@@ -3,7 +3,7 @@ import type { PCoreFrame } from './expression';
 import { type LogoShape, PCoreScene, type SceneSetup } from './scene';
 
 interface Host {
-  job(): Promise<{ width: number; height: number; shape: LogoShape; artwork: string; settings: SceneSetup['settings']; seed: number; composition: SceneSetup['composition'] }>;
+  job(): Promise<{ width: number; height: number; shape: LogoShape; artwork: string; settings: SceneSetup['settings']; seed: number; composition: SceneSetup['composition']; particles?: number }>;
   next(): Promise<{ i: number; t: number; p: PCoreFrame }[]>;
   frame(pixels: Uint8Array): Promise<void>;
   fail(message: string): void;

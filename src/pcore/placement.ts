@@ -27,6 +27,9 @@ export interface PlacementSettings {
   overIllustrations: boolean;
   /** Reveal events enlarge P-CORE temporarily. */
   growOnReveal: boolean;
+  /** Fixed position chosen by the creator: overrides adaptive placement in every production.
+   *  x, y = centre as a fraction of the frame; size = fraction of the frame's short side. */
+  manual?: { enabled: boolean; x: number; y: number; size: number };
 }
 
 export const DEFAULT_PLACEMENT: PlacementSettings = { enabled: true, heroScale: 0.72, cornerScale: 0.24, corner: 'top-right', margin: 0.04, subtitleBand: 0.2, overIllustrations: true, growOnReveal: true };
@@ -110,8 +113,14 @@ export function planPlacement(seq: Sequence, media: Record<string, MediaAsset>, 
     if (last && last.end === start && last.mode === p.mode && JSON.stringify(last.transform) === JSON.stringify(p.transform)) last.end = end;
     else segs.push({ start, end, ...p });
   };
-  let t = 0;
+  if (s.manual?.enabled) {
+    const U = Math.min(W, H);
+    const size = Math.max(0.05, Math.min(1, s.manual.size)) * U;
+    push(0, endFrame, { mode: s.manual.size >= s.heroScale * 0.8 ? 'hero' : 'corner', transform: at(W, H, s.manual.x * W, s.manual.y * H, size), reason: 'fixed position chosen by the creator' });
+  }
+  let t = s.manual?.enabled ? endFrame : 0;
   for (const it of items) {
+    if (s.manual?.enabled) break;
     if (it.start >= endFrame) break;
     if (it.start > t) push(t, it.start, placeForShot(null, W, H, s));
     const mo = it.clip.motion;

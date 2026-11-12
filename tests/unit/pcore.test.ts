@@ -118,4 +118,27 @@ describe('P-CORE adaptive placement', () => {
     ]);
     expect(segs[3]!.transform.scale).toBeGreaterThan(segs[2]!.transform.scale);
   });
+
+  it('character cards keep P-CORE beside them; a vertical frame keeps it out of the subtitle band', () => {
+    const card = img(1920, 1080, { generator: { kind: 'character-card' } as never });
+    const p = placeForShot(card, 1920, 1080, DEFAULT_PLACEMENT);
+    expect(p.mode).not.toBe('hero');
+    const v = placeForShot(img(1920, 1080), 1080, 1920, DEFAULT_PLACEMENT);
+    const size = v.transform.scale * 1080;
+    expect(960 + v.transform.y + size / 2).toBeLessThan(1920 * (1 - DEFAULT_PLACEMENT.subtitleBand) + 1);
+  });
+
+  it('a fixed position chosen by the creator overrides every shot and survives regeneration', () => {
+    const seq = createSequence('s', { width: 1920, height: 1080, frameRate: { num: 30, den: 1 } });
+    const pic = img(1920, 1080);
+    seq.tracks[0]!.clips.push({ id: 'c1', mediaId: pic.id, name: 'p', start: 0, duration: 150, sourceIn: 0, speed: 1, enabled: true, gainDb: 0, transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 }, fadeIn: 0, fadeOut: 0 } as never);
+    const manual = { enabled: true, x: 0.8, y: 0.3, size: 0.3 };
+    const segs = planPlacement(seq, { [pic.id]: pic }, 300, { manual, growOnReveal: false });
+    expect(segs).toHaveLength(1);
+    expect(segs[0]!.reason).toMatch(/fixed position/);
+    // centre at 80 % / 30 % of the frame, 30 % of the short side
+    expect(segs[0]!.transform.x).toBe(Math.round(0.8 * 1920 - 960));
+    expect(segs[0]!.transform.y).toBe(Math.round(0.3 * 1080 - 540));
+    expect(segs[0]!.transform.scale).toBeCloseTo(0.3, 3);
+  });
 });

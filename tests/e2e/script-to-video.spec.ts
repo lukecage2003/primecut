@@ -104,6 +104,8 @@ test('faceless: no images → motion design shots, editable and re-rendered from
 });
 
 test('P-CORE Studio: audio response, preview render with transparency, independent export verified', async () => {
+  // software WebGL in CI: the High Quality export renders 1.5× the output size
+  test.setTimeout(480000);
   const w = workspace();
   const { file: narration } = await makeNarration(w.media, ['Le Beyonder apparaît en 1984.', 'En réalité, il était un enfant !']);
   const { app, page } = await launch(w.userData);
@@ -120,8 +122,12 @@ test('P-CORE Studio: audio response, preview render with transparency, independe
   await expect(page.getByTestId('pcore-preview')).toBeVisible({ timeout: 180000 });
   const out = path.join(w.root, 'pcore-export.mov');
   await stubSaveDialog(app, out);
+  // supersampled path (1.5× render + premultiplied downscale) and the measured speed shown to the creator
+  await page.getByTestId('pcore-export-quality').selectOption('high');
   await page.getByTestId('pcore-export').click();
   await expect(page.getByTestId('pcore-export-check')).toContainText('alpha 0–255', { timeout: 300000 });
+  await expect(page.getByTestId('pcore-export-check')).toContainText(/High Quality: rendered in [\d.]+ s/);
+  await expect(page.getByTestId('pcore-fixed')).toBeVisible();
   const probe = JSON.parse((await ffprobe(['-v', 'error', '-show_entries', 'stream=codec_name,pix_fmt', '-of', 'json', out])).stdout.toString());
   expect(probe.streams[0].codec_name).toBe('prores');
   expect(probe.streams[0].pix_fmt).toMatch(/^yuva/);

@@ -45,7 +45,7 @@ export interface AppSettings {
   /** Optional local speech recognition for word-level sync (off until the user configures it). */
   transcriber: TranscriberConfig;
   /** P-CORE appearance / reactions / placement (brand-wide). */
-  pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings> };
+  pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings>; /** Render quality of P-CORE clips in productions (default 'high'). */ quality?: import('../pcore/quality').PCoreQuality };
 }
 
 export interface ExportRequest {
@@ -109,7 +109,7 @@ export interface PrimestoneApi {
   pcore: {
     analyze(r: PCoreStudioRequest): Promise<{ fps: number; voice: { env: number; low: number; mid: number; high: number; speaking: boolean }[]; states: string[]; energy: number[]; fragment: number[] }>;
     preview(projectFile: string, r: PCoreStudioRequest & { size: number }): Promise<string>;
-    exportFile(r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean }): Promise<{ path: string; check: AlphaCheck } | null>;
+    exportFile(r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean; quality?: import('../pcore/quality').PCoreQuality }): Promise<{ path: string; check: AlphaCheck; quality: import('../pcore/quality').PCoreQuality; renderSec: number; fps: number } | null>;
     onProgress(cb: (f: number) => void): () => void;
   };
   transcriber: {

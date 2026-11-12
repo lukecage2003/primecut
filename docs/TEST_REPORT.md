@@ -6,7 +6,7 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit | `npx vitest run tests/unit` | ✅ 84 / 84 |
+| Unit | `npx vitest run tests/unit` | ✅ 86 / 86 |
 | Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 27 / 27 |
 | Windows installer (CI, clean runner) | silent install → `--self-test` of the installed app → silent uninstall | ✅ run 21: 228.1 MB, FFmpeg 8.1.3, H.264+AAC encode, resources present, uninstalled cleanly |
 | End-to-end (Electron UI, Xvfb, software WebGL) | `npx playwright test` | ✅ 6 / 6 |
@@ -142,4 +142,13 @@ documentary against exact ground truth (same transcript, alignment only):
 The earlier "no black frames" result for the documentary was measured with the truncated runner and
 was re-checked on the full 66-min file with the fixed runner: **0 black segments** (blackdetect d=0.4 s, pix_th 0.06) — the result stands. Pause detection also adapts to quiet recordings now (gate =
 loudness − 20 dB below −22 LUFS; unchanged for normal levels).
+
+## P-CORE V1.1 (2026-11-12)
+See `docs/PCORE.md` § V1.1: emphasis calibrated on the real narration (40 % → 13 %), four quality
+levels measured in software WebGL (1080², 150 frames: Preview 9.0 s · Standard 33.2 s · High 51.1 s ·
+Final 78.9 s), fixed manual placement, export shows render time/fps. Found during the work: an
+output filter placed among the inputs made FFmpeg exit when a narration track was muxed (the
+renderer then waited for its 60 s watchdog) — fixed, and FFmpeg exiting early now fails the render at
+once with its message. E2E P-CORE Studio covers the High Quality (1.5× supersampled) export path.
+No GPU numbers: RTX 3050 not reachable from the development environment.
 

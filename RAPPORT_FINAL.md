@@ -64,7 +64,7 @@ Procédure d'installation : `INSTALLATION_WINDOWS.md`. Premiers pas : `DEMARRAGE
 | Suite | Résultat |
 |---|---|
 | Vérification de types | ✅ 0 erreur |
-| Tests unitaires | ✅ 84 / 84 |
+| Tests unitaires | ✅ 86 / 86 |
 | Tests d'intégration (FFmpeg réel) | ✅ 27 / 27 |
 | Tests de bout en bout (application réelle, Linux + Windows CI) | ✅ 6 / 6 |
 | CI Windows (tests + installateur + installation/auto-test/désinstallation) | ✅ run 21 |
