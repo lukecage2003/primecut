@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,17 +17,24 @@ export function workspace(): { root: string; userData: string; projects: string;
   return w;
 }
 
-const launched: ElectronApplication[] = [];
+const launched: { app: ElectronApplication; pid?: number }[] = [];
+const pids = new WeakMap<ElectronApplication, number | undefined>();
+
+/** Kills an app and all its child processes (on Windows SIGKILL would orphan Chromium helpers). */
+export function killTree(app: ElectronApplication) {
+  const pid = pids.get(app);
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+    else process.kill(pid, 'SIGKILL');
+  } catch {
+    /* already gone */
+  }
+}
 
 /** Kills any app instance still running (used in afterEach so a failure never hangs the worker). */
 export async function killAll() {
-  for (const app of launched.splice(0)) {
-    try {
-      app.process().kill('SIGKILL');
-    } catch {
-      /* already gone */
-    }
-  }
+  for (const { app } of launched.splice(0)) killTree(app);
 }
 
 export async function launch(userData: string): Promise<Session> {
@@ -34,7 +42,8 @@ export async function launch(userData: string): Promise<Session> {
     args: [path.resolve('.'), '--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
     env: { ...process.env, PRIMESTONE_USER_DATA: userData },
   });
-  launched.push(app);
+  pids.set(app, app.process().pid);
+  launched.push({ app });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   return { app, page };

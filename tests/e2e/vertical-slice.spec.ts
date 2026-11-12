@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
 import { audioRms, frameColor, makeColorClip } from '../integration/fixtures';
 import { readProjectFile } from '../../src/engine/projectStore';
 import { ffprobe } from '../../src/engine/ffmpeg';
-import { killAll, launch, stubOpenDialog, stubSaveDialog, workspace } from './harness';
+import { killAll, killTree, launch, stubOpenDialog, stubSaveDialog, workspace } from './harness';
 
 test.afterEach(killAll);
 
@@ -171,7 +171,7 @@ test('crash recovery: autosave restores unsaved edits after a hard kill', async 
   await expect(page.getByTestId('clip')).toHaveCount(2);
   const autosave = path.join(w.projects, 'Crashy', 'Autosave', 'Crashy.autosave.psproj');
   await expect.poll(() => fs.existsSync(autosave), { timeout: 20000 }).toBe(true);
-  app.process().kill('SIGKILL');
+  killTree(app);
 
   ({ app, page } = await launch(w.userData));
   await page.getByTestId('recent-item').click();
