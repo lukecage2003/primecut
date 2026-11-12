@@ -15,6 +15,7 @@ import {
   normalizeSequence,
   addTransitionsAt,
   removeTransition,
+  VISUAL_KINDS,
 } from '../core';
 import type { OpenResult } from '../shared/api';
 import { api } from './api';
@@ -472,4 +473,31 @@ export async function learnFromEdits() {
   const { changes } = await api.production.learn(seq.production.style as never, measureStyle(seq));
   if (!changes.length) toast('No measurable difference from the generated version — preferences unchanged', 'info');
   else toast(`Preferences updated: ${changes.join(' · ')}`, 'success', undefined, 8000);
+}
+
+const VISUAL_LABEL: Record<string, string> = Object.fromEntries(VISUAL_KINDS.map((k) => [k.id, k.label]));
+
+/** Re-renders a procedural composition after a manual change (one undoable step once rendered). */
+export async function updateVisual(mediaId: string, patch: Partial<import('../core/generators').GeneratorSpec>) {
+  const e = ed();
+  const m = e.history.present.media[mediaId];
+  if (!m?.generator) return;
+  const seq = currentSequence(e);
+  const spec = { ...m.generator, ...patch };
+  const narr = spec.audio ? e.history.present.media[spec.audio.mediaId] : undefined;
+  try {
+    const r = await api.production.renderVisual(e.file, spec, { width: seq.settings.width, height: seq.settings.height, rate: `${seq.settings.frameRate.num}/${seq.settings.frameRate.den}` }, narr?.path ?? null);
+    ed().history.commit('Edit motion design', (d) => {
+      const a = d.media[mediaId]!;
+      a.generator = spec as Draft<typeof spec>;
+      a.path = r.path;
+      a.fingerprint = r.fingerprint;
+      a.name = `${VISUAL_LABEL[spec.kind] ?? spec.kind}${spec.title ? ` · ${spec.title}` : ''}`;
+      for (const sq of Object.values(d.sequences)) for (const t of sq.tracks) for (const c of t.clips) if (c.mediaId === mediaId) c.name = a.name;
+    });
+    store.setEditor((x) => ({ thumbs: Object.fromEntries(Object.entries(x.thumbs).filter(([k]) => k !== mediaId)) }));
+    void prepareMedia(ed().history.present.media[mediaId]!);
+  } catch (err) {
+    toast(`Render failed: ${errorText(err)}`, 'error');
+  }
 }

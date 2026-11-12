@@ -18,6 +18,9 @@ export interface ProductionPreferences {
   motionWeights: Record<Exclude<MotionKind, 'none' | 'panels'>, number>;
   /** Read comic pages panel by panel when panels are detected and the shot is long enough. */
   panelReading: boolean;
+  /** Fill shots without a relevant illustration with procedural compositions (never a black screen). */
+  proceduralVisuals: boolean;
+  visualStyle: 'gold' | 'hologram' | 'crimson';
   /** Seconds spent per panel. */
   secondsPerPanel: number;
   /** Dissolve between sections (frames); 0 = hard cut. */
@@ -42,6 +45,8 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   motionAmount: 0.12,
   motionWeights: { 'zoom-in': 3, 'zoom-out': 2, 'pan-left': 1, 'pan-right': 1, 'pan-up': 0.5, 'pan-down': 0.5 },
   panelReading: true,
+  proceduralVisuals: true,
+  visualStyle: 'gold',
   secondsPerPanel: 1.8,
   sectionDissolveFrames: 15,
   dissolveShare: 0,

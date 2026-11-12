@@ -130,6 +130,8 @@ export interface PrimestoneApi {
     revertPreferences(version: number): Promise<PreferencesState>;
     readTextFile(): Promise<{ path: string; text: string } | null>;
     chooseFolders(): Promise<string[]>;
+    /** Renders a procedural composition; returns the cached file and its fingerprint. */
+    renderVisual(projectFile: string, spec: import('../core/generators').GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null): Promise<{ path: string; fingerprint: import('../core/model').MediaFingerprint }>;
   };
   tasks: {
     list(): Promise<TaskInfo[]>;

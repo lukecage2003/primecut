@@ -156,3 +156,29 @@ describe('comic page read panel by panel', async () => {
     expect(r4 > 200 && g4 > 200 && b4 < 60).toBe(true); // panel 4 yellow
   });
 });
+
+describe('faceless production with no illustrations at all', () => {
+  it('fills the whole video with rendered, voice-reactive compositions and exports it', async () => {
+    const project = createProject('Faceless', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const narr = await importMediaFile(narrationFile, dir);
+    project.media[narr.id] = narr;
+    const res = await produceVideo({ project, projectDir: path.join(dir, 'faceless'), script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } });
+    const seq = res.sequence;
+    expect(seq.production!.shots.every((s) => s.quality === 'generated')).toBe(true);
+    for (const m of res.newMedia) {
+      expect(fs.existsSync(m.path)).toBe(true);
+      project.media[m.id] = m;
+    }
+    expect(new Set(res.newMedia.map((m) => m.generator!.kind)).size).toBeGreaterThanOrEqual(2);
+    project.sequences[seq.id] = seq;
+    project.activeSequenceId = seq.id;
+    expect(validateProject(project)).toEqual([]);
+    expect(seq.production!.qcIssues.filter((i) => i.severity === 'error')).toEqual([]);
+    const out = path.join(dir, 'faceless.mp4');
+    expect((await exportSequence({ project, sequenceId: seq.id, output: out })).ok).toBe(true);
+    for (const t of [0.8, truth[1]!.start + 0.3, truth[3]!.start + 0.3]) {
+      const { stdout } = await ffmpeg(['-v', 'error', '-ss', t.toFixed(2), '-i', out, '-frames:v', '1', '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', 'pipe:1'], { collectStdout: true });
+      expect(Math.max(...stdout)).toBeGreaterThan(80); // never a black screen
+    }
+  }, 300000);
+});

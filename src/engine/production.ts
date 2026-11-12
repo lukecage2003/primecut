@@ -21,7 +21,8 @@ import {
   speechFromSilences,
 } from '../production';
 import { analyzeAudio } from './audioAnalysis';
-import { importMediaFile } from './media';
+import { fingerprintFile, importMediaFile } from './media';
+import { renderGenerator } from './generators';
 import { ffmpeg } from './ffmpeg';
 import { detectPanels } from '../core';
 
@@ -152,8 +153,24 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const name = req.name ?? `Auto v${versions + 1}`;
   const built = buildSequence({ name, settings, script, alignment, narration, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs });
 
+  // render procedural compositions (cached by spec hash) so they behave like ordinary media
+  const toRender = built.generated.filter((g) => built.sequence.tracks.some((t) => t.clips.some((c) => c.mediaId === g.id)));
+  const cacheDir = path.join(req.projectDir, 'Cache');
+  let done = 0;
+  const rate = `${settings.frameRate.num}/${settings.frameRate.den}`;
+  const worker = async () => {
+    for (let g = toRender.shift(); g; g = toRender.shift()) {
+      progress(0.65 + 0.15 * (done / Math.max(1, built.generated.length)), `Rendering motion design (${done + 1}/${built.generated.length})`);
+      g.path = await renderGenerator(g.generator!, { width: settings.width, height: settings.height, rate, audioPath: narration.path, cacheDir, signal });
+      g.fingerprint = await fingerprintFile(g.path);
+      g.relativePath = path.relative(req.projectDir, g.path);
+      done++;
+    }
+  };
+  if (toRender.length) await Promise.all([worker(), worker()]);
+
   progress(0.8, 'Quality control');
-  const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries(scan.assets.map((a) => [a.id, a])) };
+  const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated].map((a) => [a.id, a])) };
   const endFrame = secondsToFrames(narration.probe.durationSec + 1, settings.frameRate);
   const fixes = autoFix(built.sequence, mediaMap, endFrame);
   built.sequence.production = {
@@ -178,7 +195,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   void framesToSeconds;
   return {
     sequence: built.sequence,
-    newMedia: scan.assets.filter((a) => used.has(a.id)),
+    newMedia: [...scan.assets, ...built.generated].filter((a) => used.has(a.id)),
     report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: script.notes, entities },
   };
 }

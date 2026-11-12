@@ -119,7 +119,7 @@ function produce(prefs = DEFAULT_PREFERENCES) {
   const lib = library();
   const project = createProject('P');
   const r = buildSequence({ name: 'Auto v1', settings: project.sequences[project.activeSequenceId]!.settings, script, alignment, narration, narrationLufs: -20, library: lib, prefs });
-  const media = Object.fromEntries([...lib, narration].map((m) => [m.id, m]));
+  const media = Object.fromEntries([...lib, ...r.generated, narration].map((m) => [m.id, m]));
   return { ...r, media, lib, narration, alignment };
 }
 
@@ -146,7 +146,7 @@ describe('timeline construction', () => {
     expect(media[osborn.mediaId!]!.name).toBe('norman-osborn-unmasked.png');
     // narration normalised (-20 LUFS → -16 target), motion on stills, section dissolve, captions
     expect(sequence.tracks[2]!.clips[0]!.gainDb).toBe(4);
-    expect(v1.clips.every((c) => c.motion.kind !== 'none')).toBe(true);
+    expect(v1.clips.filter((c) => media[c.mediaId]!.kind === 'image').every((c) => c.motion.kind !== 'none')).toBe(true);
     expect(v1.transitions.length).toBeGreaterThanOrEqual(1);
     expect(sequence.captions.filter((c) => c.style === 'title').map((c) => c.text)).toEqual(['Le retour du Bouffon Vert', 'La révélation']);
     expect(sequence.captions.some((c) => c.style === 'lower-third' && c.text.startsWith('Spider-Man\nMarvel'))).toBe(true);
@@ -157,12 +157,35 @@ describe('timeline construction', () => {
     void lib;
   });
 
-  it('marks missing visuals with placeholders and QC flags them', () => {
+  it('never leaves the screen empty: shots without media become contextual compositions', () => {
     const script = parseScript(SCRIPT);
     const narration = fakeMedia({ name: 'voice.wav', kind: 'audio', video: false, durationSec: 20 });
     const alignment = alignByPauses(script.sentences, [{ start: 0, end: 20 }]);
     const p = createProject('P');
     const r = buildSequence({ name: 'x', settings: p.sequences[p.activeSequenceId]!.settings, script, alignment, narration, library: [], prefs: DEFAULT_PREFERENCES });
+    const v1 = r.sequence.tracks[0]!;
+    expect(v1.clips.length).toBeGreaterThan(0);
+    expect(v1.clips[0]!.start).toBe(0);
+    for (let i = 0; i + 1 < v1.clips.length; i++) expect(v1.clips[i]!.start + v1.clips[i]!.duration).toBe(v1.clips[i + 1]!.start);
+    expect(r.shots.every((s) => s.quality === 'generated')).toBe(true);
+    expect(r.sequence.captions.some((c) => c.style === 'placeholder')).toBe(false);
+    const kinds = r.generated.map((g) => g.generator!.kind);
+    expect(kinds).toContain('character-card'); // Spider-Man / Bouffon Vert introduced
+    for (let i = 0; i + 1 < kinds.length; i++) expect(kinds[i]).not.toBe(kinds[i + 1]); // no identical consecutive compositions
+    const g0 = r.generated[0]!.generator!;
+    expect(g0.audio).toEqual({ mediaId: narration.id, offsetSec: 0 }); // reacts to the real narration at its position
+    expect(r.generated.every((g) => g.rights?.usage === 'owned')).toBe(true);
+    const media = Object.fromEntries([narration, ...r.generated].map((m) => [m.id, m]));
+    const qc = runQc(r.sequence, media, DEFAULT_PREFERENCES, { narrationEnd: 630 });
+    expect(qc.issues.filter((i) => i.code === 'gap' || i.code === 'missing-visual')).toEqual([]);
+  });
+
+  it('with procedural visuals disabled, missing shots get placeholders and QC flags them', () => {
+    const script = parseScript(SCRIPT);
+    const narration = fakeMedia({ name: 'voice.wav', kind: 'audio', video: false, durationSec: 20 });
+    const alignment = alignByPauses(script.sentences, [{ start: 0, end: 20 }]);
+    const p = createProject('P');
+    const r = buildSequence({ name: 'x', settings: p.sequences[p.activeSequenceId]!.settings, script, alignment, narration, library: [], prefs: { ...DEFAULT_PREFERENCES, proceduralVisuals: false } });
     expect(r.sequence.captions.some((c) => c.style === 'placeholder' && c.text.startsWith('VISUEL MANQUANT'))).toBe(true);
     const qc = runQc(r.sequence, { [narration.id]: narration }, DEFAULT_PREFERENCES, { alignmentConfidence: 0 });
     expect(qc.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['gap', 'missing-visual', 'alignment']));
@@ -178,7 +201,9 @@ describe('timeline construction', () => {
     const narration = fakeMedia({ name: 'v.wav', kind: 'audio', video: false, durationSec: 3 });
     const p = createProject('P');
     const r = buildSequence({ name: 'x', settings: p.sequences[p.activeSequenceId]!.settings, script, alignment: alignByPauses(script.sentences, [{ start: 0, end: 3 }]), narration, library: lib, prefs: DEFAULT_PREFERENCES });
-    expect(r.sequence.tracks[0]!.clips).toHaveLength(0);
+    // rights-restricted images are never placed: the shot becomes a procedural composition instead
+    expect(r.sequence.tracks[0]!.clips.every((c) => !lib.some((m) => m.id === c.mediaId))).toBe(true);
+    expect(r.shots[0]!.quality).toBe('generated');
     expect(r.shots[0]!.reasons).toContain('no media with usable rights');
   });
 

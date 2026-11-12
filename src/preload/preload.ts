@@ -49,6 +49,7 @@ const api: PrimestoneApi = {
     revertPreferences: (v) => invoke('production:revertPreferences', v),
     readTextFile: () => invoke('production:readTextFile'),
     chooseFolders: () => invoke('production:chooseFolders'),
+    renderVisual: (file, spec, size, audio) => invoke('production:renderVisual', file, spec, size, audio),
   },
   tasks: {
     list: () => invoke('tasks:list'),

@@ -58,3 +58,11 @@ and export), copy/paste and box selection.
 - Windows CI: the BtbN FFmpeg build has no `flite` filter, so the synthetic-narration fixture now
   falls back to speech-like voiced bursts (same known pauses). Both paths are tested locally
   (`PRIMESTONE_TEST_NO_FLITE=1`).
+
+### Faceless & Primestone Visuals
+- Comic page panel detection (XY-cut) + panel-by-panel camera; first attempt framed tall panels
+  at full page width (geometry limit) → windows may now extend past the page over a dark pad.
+- Procedural compositions engine (`engine/generators.ts`) + contextual decision
+  (`production/visuals.ts`); first render had a purple cast (screen blend applied in YUV) and a
+  noisy vectorscope "orb" → glow now blended in RGB, orb replaced by a voice-envelope-driven core.
+- Builder now never leaves a shot empty; generated shots are rendered in the pipeline and cached.

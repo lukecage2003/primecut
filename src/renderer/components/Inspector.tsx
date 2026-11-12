@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { type Clip, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
-import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead } from '../actions';
+import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead, updateVisual } from '../actions';
+import { VISUAL_KINDS } from '../../core';
 import { store } from '../store';
 import { currentProject, currentSequence, useEditor } from '../store';
 
@@ -173,6 +174,7 @@ export function Inspector() {
                 onCommit={(v) => (clearPreview(), edit(k === 'fadeIn' ? 'Fade in' : 'Fade out', (s) => setClipFades(s, primary.clip.id, { [k]: v })))}
               />
             ))}
+            {video && project.media[video.clip.mediaId]?.generator && <VisualEditor mediaId={video.clip.mediaId} />}
             {video && (
               <>
                 <div className="section-title">Transform</div>
@@ -277,6 +279,57 @@ function ProductionReport() {
           <div className="tiny">{s.reasons.join(' · ')}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function VisualEditor({ mediaId }: { mediaId: string }) {
+  const g = useEditor((e) => currentProject(e).media[mediaId]?.generator);
+  const [title, setTitle] = useState(g?.title ?? '');
+  const [subtitle, setSubtitle] = useState(g?.subtitle ?? '');
+  const [busy, setBusy] = useState(false);
+  if (!g) return null;
+  const apply = async (patch: Parameters<typeof updateVisual>[1]) => {
+    setBusy(true);
+    await updateVisual(mediaId, patch);
+    setBusy(false);
+  };
+  return (
+    <div className="insp" style={{ padding: 0 }} data-testid="visual-editor">
+      <div className="section-title">Motion design {busy ? '· rendering…' : ''}</div>
+      <div className="insp-row">
+        <label>Composition</label>
+        <select className="input" value={g.kind} disabled={busy} onChange={(e) => void apply({ kind: e.target.value as never })} data-testid="visual-kind">
+          {VISUAL_KINDS.map((k) => (
+            <option key={k.id} value={k.id}>{k.label}</option>
+          ))}
+        </select>
+        <span />
+      </div>
+      <div className="insp-row">
+        <label>Style</label>
+        <select className="input" value={g.style} disabled={busy} onChange={(e) => void apply({ style: e.target.value as never })}>
+          <option value="gold">Primestone gold</option>
+          <option value="hologram">Hologram</option>
+          <option value="crimson">Crimson</option>
+        </select>
+        <span />
+      </div>
+      <div className="insp-row">
+        <label>Title</label>
+        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== (g.title ?? '') && void apply({ title })} />
+        <span />
+      </div>
+      <div className="insp-row">
+        <label>Subtitle</label>
+        <input className="input" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} onBlur={() => subtitle !== (g.subtitle ?? '') && void apply({ subtitle })} />
+        <span />
+      </div>
+      <div className="insp-row">
+        <label>Variation</label>
+        <button className="btn ghost" disabled={busy} onClick={() => void apply({ seed: g.seed + 1 })}>Shuffle</button>
+        <span />
+      </div>
     </div>
   );
 }

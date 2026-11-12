@@ -3,7 +3,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
 import type { Project } from '../core/model';
-import { produceVideo, projectPaths, atomicWrite } from '../engine';
+import { produceVideo, projectPaths, atomicWrite, renderGenerator, fingerprintFile } from '../engine';
+import type { GeneratorSpec } from '../core/generators';
 import { DEFAULT_PREFERENCES, type ProductionPreferences, adaptPreferences, type EditStyle } from '../production';
 import type { PreferencesState, ProductionInputs, ProductionOutcome } from '../shared/api';
 import { orchestrator } from './ipc';
@@ -95,6 +96,18 @@ export function registerProductionIpc() {
     if (st.size > 5 * 1024 * 1024) throw new Error('Script file is larger than 5 MB');
     return { path: f, text: await fsp.readFile(f, 'utf8') };
   });
+  ipcMain.handle('production:renderVisual', (_e, projectFile: string, spec: GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null) =>
+    orchestrator.submit({
+      type: 'visual',
+      label: `Motion design · ${spec.kind}`,
+      priority: 'high',
+      dedupeKey: `visual:${JSON.stringify(spec)}:${size.width}x${size.height}`,
+      run: async (c) => {
+        const p = await renderGenerator(spec, { ...size, audioPath, cacheDir: projectPaths(projectFile).cache, signal: c.signal });
+        return { path: p, fingerprint: await fingerprintFile(p) };
+      },
+    }).promise,
+  );
   ipcMain.handle('production:chooseFolders', async (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const r = await dialog.showOpenDialog(w, { title: 'Media folders', properties: ['openDirectory', 'multiSelections'] });

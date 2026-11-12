@@ -18,7 +18,12 @@ import {
   DEFAULT_TRANSFORM,
   normalizeSequence,
   windowFor,
+  type GeneratorSpec,
+  type VisualKind,
+  VISUAL_KINDS,
+  specHash,
 } from '../core';
+import { decideVisual } from './visuals';
 import type { AlignmentResult } from './align';
 import { EntityIndex } from './entities';
 import { type Beat, buildBeats, chooseMedia, indexLibrary, pickMotion, reserveHinted } from './planner';
@@ -41,6 +46,8 @@ export interface BuildInput {
 
 export interface BuildResult {
   sequence: Sequence;
+  /** Procedural composition assets to render (path empty until the engine renders them). */
+  generated: MediaAsset[];
   beats: Beat[];
   shots: ProductionShotMeta[];
 }
@@ -78,6 +85,35 @@ export function buildSequence(input: BuildInput): BuildResult {
   const narrDur = input.narration.probe.durationSec;
   const endFrame = F(narrDur + 1);
   const shots: ProductionShotMeta[] = [];
+  const generated: MediaAsset[] = [];
+  let prevVisual: VisualKind | null = null;
+  const speechIn = (a: number, b: number) =>
+    input.alignment.sentences.reduce((acc, s) => acc + Math.max(0, Math.min(b, s.end) - Math.max(a, s.start)), 0);
+  /** Pads (s) rendered before/after generated shots so transitions have handles. */
+  const PAD = 1;
+  const makeVisual = (beat: Beat, t: number, len: number, why: string[]) => {
+    const startSec = framesToSeconds(t, rate);
+    const durSec = framesToSeconds(len, rate);
+    const dec = decideVisual(beat, { index, previous: prevVisual, shotIndex: shots.length, speechSec: speechIn(startSec, startSec + durSec), durationSec: durSec, style: prefs.visualStyle });
+    prevVisual = dec.spec.kind;
+    const spec: GeneratorSpec = { ...dec.spec, durationSec: durSec + 2 * PAD, audio: { mediaId: input.narration.id, offsetSec: Math.max(0, startSec - PAD) } };
+    const label = VISUAL_KINDS.find((k) => k.id === spec.kind)?.label ?? spec.kind;
+    const asset: MediaAsset = {
+      id: newId(),
+      name: `${label}${spec.title ? ` · ${spec.title}` : ''}`,
+      kind: 'video',
+      path: '',
+      fingerprint: { size: 0, mtimeMs: 0, partialHash: specHash(spec, settings.width, settings.height, `${rate.num}/${rate.den}`) },
+      probe: { durationSec: spec.durationSec, container: 'mp4', video: { codec: 'h264', width: settings.width, height: settings.height, frameRate: rate, avgFrameRate: rate, isVFR: false, pixFmt: 'yuv420p', rotation: 0 } },
+      importedAt: new Date().toISOString(),
+      rights: { usage: 'owned', source: 'primestone-visuals', checkedAt: new Date().toISOString(), note: 'Procedural composition rendered locally' },
+      generator: spec,
+    };
+    generated.push(asset);
+    const c = clip(asset.id, asset.name, t, len, Math.min(PAD, startSec));
+    v1.clips.push(c);
+    shots.push({ start: t, end: t + len, mediaId: asset.id, beat: beat.index, quality: 'generated', reasons: [...why, `motion design: ${dec.reason}`], text: beat.text });
+  };
   const reserved = reserveHinted(beats, library);
   const recent: string[] = [];
   const usage = new Map<string, number>();
@@ -97,6 +133,12 @@ export function buildSequence(input: BuildInput): BuildResult {
       let len = Math.min(target, bEnd - t);
       if (bEnd - (t + len) < minF && bEnd - (t + len) > 0) len = bEnd - t; // avoid a tiny last shot
       const choice = chooseMedia(beat, library, recent, usage, prefs, sectionEntities, beats[bi + 1], reserved);
+      const generic = choice.quality === 'weak' && choice.reasons.some((r) => r.startsWith('no specific match'));
+      if (prefs.proceduralVisuals && (!choice.item || generic)) {
+        makeVisual(beat, t, len, [...(choice.item ? ['no relevant illustration'] : choice.reasons), 'web search: no provider enabled']);
+        t += len;
+        continue;
+      }
       if (!choice.item) {
         shots.push({ start: t, end: t + len, mediaId: null, beat: beat.index, quality: 'missing', reasons: choice.reasons, text: beat.text });
         t += len;
@@ -222,7 +264,7 @@ export function buildSequence(input: BuildInput): BuildResult {
     add(s.start, s.end, `VISUEL MANQUANT\n${need || 'illustration'}`, 'placeholder');
   }
   seq.captions = captions.sort((a, b) => a.start - b.start);
-  normalizeSequence(seq, Object.fromEntries([...input.library, input.narration, ...(input.music ? [input.music] : [])].map((m) => [m.id, m])));
+  normalizeSequence(seq, Object.fromEntries([...input.library, ...generated, input.narration, ...(input.music ? [input.music] : [])].map((m) => [m.id, m])));
   void framesToSeconds;
-  return { sequence: seq, beats, shots };
+  return { sequence: seq, beats, shots, generated };
 }

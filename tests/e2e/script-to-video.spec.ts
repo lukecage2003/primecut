@@ -62,3 +62,29 @@ test('script + narration + folder → generated video', async () => {
   await page.keyboard.press('Control+s');
   await expect(page.getByTestId('project-title').locator('.dirty')).toHaveCount(0);
 });
+
+test('faceless: no images → motion design shots, editable and re-rendered from the Inspector', async () => {
+  const w = workspace();
+  const { file: narration } = await makeNarration(w.media, ['Tony Stark construit une intelligence artificielle.', 'En 1963 puis en 2008, Iron Man change tout.']);
+  const { app, page } = await launch(w.userData);
+  await page.getByTestId('new-name').fill('Faceless');
+  await page.getByTestId('create-project').click();
+  await stubOpenDialog(app, [narration]);
+  await page.getByTestId('import-media').click();
+  await page.getByTestId('open-production').click();
+  await page.getByTestId('script-input').fill('Tony Stark construit une intelligence artificielle. En 1963 puis en 2008, Iron Man change tout.');
+  await page.getByTestId('generate').click();
+  await expect(page.getByTestId('production-panel')).toHaveCount(0, { timeout: 120000 });
+  await expect(page.getByTestId('production-report')).toContainText('motion design');
+  // the viewer shows a rendered composition, never black
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(async () => page.$$eval('[data-testid="viewer-canvas"] video', (vs) => (vs as HTMLVideoElement[]).some((v) => v.style.display === 'block' && v.readyState >= 2))).toBe(true);
+  // manual change: switch the first shot's composition and re-render
+  await page.locator('[data-testid="clip"][data-kind="video"]').first().click({ position: { x: 20, y: 30 } });
+  await expect(page.getByTestId('visual-editor')).toBeVisible();
+  await page.getByTestId('visual-kind').selectOption('typography');
+  await expect(page.getByTestId('visual-kind')).toHaveValue('typography', { timeout: 60000 });
+  await expect(page.getByTestId('undo')).toHaveAttribute('title', /Edit motion design/, { timeout: 60000 });
+  if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '07-faceless.png') });
+});

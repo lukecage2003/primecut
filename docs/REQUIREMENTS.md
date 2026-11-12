@@ -108,3 +108,9 @@ Evidence refers to test files (U = tests/unit, I = tests/integration, E = tests/
 | STV-12 | Preference adaptation from edits, versioned and revertible | Partial | U adaptPreferences; UI “Learn from my edits”; revert via IPC (no UI list yet) |
 | STV-13 | Web media search with licence checks | Planned | — |
 | STV-14 | Sound design (ducking, SFX), emotional pacing | Planned | — |
+| STV-15 | Faceless production (no presenter required) | Done | I “faceless production…” (no images → full video), E faceless |
+| STV-16 | Never a black screen: decision order media → search → motion design → voice HUD → typography | Done (search step pending providers) | U “never leaves the screen empty”, I faceless export frames non-black |
+| STV-17 | Audio-reactive holographic visuals driven by the real narration | Done (v1) | I voice envelope + core brighter while speaking |
+| STV-18 | Contextual compositions (character, timeline, cosmic, data/AI, dramatic, typography), no identical consecutive | Done (v1) | U kinds + no repeats; I all kinds render |
+| STV-19 | Manual editing of compositions | Done | E faceless (Inspector re-render, undoable) |
+| STV-20 | Comic pages read panel by panel | Done | U panels; I per-panel colours in export |

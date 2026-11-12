@@ -120,6 +120,15 @@ export function ProductionPanel() {
               <span className="val">{Math.round(prefs.motionAmount * 100)}%</span>
             </div>
             <div className="insp-row">
+              <label>Visual style</label>
+              <select className="input" value={prefs.visualStyle} onChange={(e) => set('visualStyle', e.target.value as never)}>
+                <option value="gold">Primestone gold</option>
+                <option value="hologram">Hologram</option>
+                <option value="crimson">Crimson</option>
+              </select>
+              <span />
+            </div>
+            <div className="insp-row">
               <label>Music level</label>
               <input type="range" min={-35} max={-8} step={1} value={prefs.musicRelativeDb} onChange={(e) => set('musicRelativeDb', Number(e.target.value))} />
               <span className="val">{prefs.musicRelativeDb} dB</span>
@@ -130,6 +139,8 @@ export function ProductionPanel() {
                   ['subtitles', 'Subtitles'],
                   ['sectionTitles', 'Section titles'],
                   ['lowerThirds', 'Name tags'],
+                  ['proceduralVisuals', 'Motion design when no image'],
+                  ['panelReading', 'Read pages panel by panel'],
                 ] as const
               ).map(([k, l]) => (
                 <label key={k} className="row" style={{ gap: 6 }}>

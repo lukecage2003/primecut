@@ -7,3 +7,4 @@ export * from './preferences';
 export * from './planner';
 export * from './builder';
 export * from './qc';
+export * from './visuals';

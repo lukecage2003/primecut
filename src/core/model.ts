@@ -71,6 +71,8 @@ export interface MediaAsset {
   /** Optional preview proxy (relative to the project cache dir). */
   proxy?: string;
   rights?: MediaRights;
+  /** Procedural composition rendered by the engine (file at `path` is the cached render). */
+  generator?: import('./generators').GeneratorSpec;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
@@ -194,7 +196,7 @@ export interface ProductionShotMeta {
   end: number;
   mediaId: string | null;
   beat: number;
-  quality: 'strong' | 'weak' | 'missing';
+  quality: 'strong' | 'weak' | 'missing' | 'generated';
   reasons: string[];
   text: string;
 }

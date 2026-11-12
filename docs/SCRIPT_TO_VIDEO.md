@@ -40,7 +40,7 @@ Pipeline stages and where they stand (numbers = the mandatory pipeline of the br
 | 7 | Check relevance, provenance, terms of use | **Partial** | Every asset carries `rights`; non-cleared media are never auto-placed; QC errors block-flag them |
 | 8 | Build the timeline automatically | **Done** | builder.ts |
 | 9 | Choose images and durations from narration | **Done** | scoring + reservations + no-repeat rules + split of long beats |
-| 10 | Zooms, moves, transitions | **Partial** | Ken Burns (6 kinds), dissolves at section changes; no panel-by-panel comic page navigation yet |
+| 10 | Zooms, moves, transitions | **Done (v1)** | Ken Burns (6 kinds), panel-by-panel page reading, blurred fill, dissolves; procedural motion design (docs/VISUALS.md) |
 | 11 | Titles, subtitles, graphics | **Partial** | Section titles, subtitles (≤2×42 chars), name tags, missing-visual cards (ASS export, identical preview) |
 | 12 | Sound environment | **Partial** | Narration normalised to −16 LUFS, music bed at a relative level with fades; no sidechain ducking or SFX yet |
 | 13 | Rhythm from narrative/emotional intent | **Planned** | Needs sentiment/intensity cues |
@@ -65,7 +65,7 @@ parameter adaptation, not model training**; no model weights are trained or down
 Web providers will be disabled by default and require explicit consent per provider.
 
 ## Next steps (in order)
-1. Blurred-background fill for portrait pages; panel-by-panel motion on comic pages.
+1. ~~Blurred fill, panel-by-panel reading, procedural audio-reactive motion design~~ (done).
 2. Optional local word-level recogniser (faster-whisper sidecar, model downloaded only on explicit request, licence shown).
 3. Web media providers with licence filters (Wikimedia Commons / Openverse), consent-gated, attribution credits.
 4. Sidechain ducking, SFX layer, emotional pacing cues from the script.

@@ -7,3 +7,4 @@ export * from './tasks';
 export * from './hardware';
 export * from './audioAnalysis';
 export * from './production';
+export * from './generators';
