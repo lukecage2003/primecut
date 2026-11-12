@@ -50,6 +50,8 @@ export function decideVisual(beat: Beat, ctx: VisualContext): VisualDecision {
   }
   const source = beat.sources?.[0]?.replace(/\s+/g, ' ').slice(0, 60);
   const people = beat.entities.filter((e) => e.entityId && (e.kind === 'character' || e.kind === 'team'));
+  // names specific to this script (not in the curated base) get a neutral reference card
+  const local = beat.entities.filter((e) => e.entityId?.startsWith('script:') && e.kind === 'concept');
   const years = yearsIn(beat.text);
   if (people.length) {
     const e = people[0]!;
@@ -57,6 +59,10 @@ export function decideVisual(beat: Beat, ctx: VisualContext): VisualDecision {
     const pub = entry?.publisher ? ctx.index.get(entry.publisher)?.name : undefined;
     const kindLabel = e.kind === 'team' ? 'Équipe' : 'Personnage';
     candidates.push({ level: 3, reason: `introduces ${e.name}`, spec: { kind: 'character-card', style: ctx.style, seed, title: e.name, subtitle: source ?? [pub, kindLabel].filter(Boolean).join(' · '), intensity: 0.6 } });
+  }
+  if (!people.length && local.length) {
+    const e = local[0]!;
+    candidates.push({ level: 3, reason: `introduces ${e.name}`, spec: { kind: 'character-card', style: ctx.style, seed, title: e.name, subtitle: source ?? 'Référence', intensity: 0.6 } });
   }
   if (years.length >= 2 || (years.length === 1 && KW.time.test(t))) {
     candidates.push({ level: 3, reason: `chronology ${years.join(' → ')}`, spec: { kind: 'timeline', style: ctx.style, seed, items: years, title: beat.entities.find((x) => x.entityId)?.name, intensity: 0.5 } });

@@ -326,7 +326,8 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
     const idx = bySentence.get(s.index) ?? [];
     if (!idx.length) continue;
     const words = idx.map((k) => ({ text: script[k]!.raw, ...times[k]! }));
-    if (!words[0]!.estimated && !words.at(-1)!.estimated) anchored++;
+    // anchored: most words were recognised (the edges are then pinned by neighbours or speech onsets)
+    if (words.filter((w) => !w.estimated).length >= Math.max(1, words.length * 0.5)) anchored++;
     out.push({ index: s.index, start: words[0]!.start, end: words.at(-1)!.end, words, method: 'transcript' });
   }
   if (speech?.length) snapToSpeech(out, speech);

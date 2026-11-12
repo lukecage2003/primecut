@@ -275,3 +275,18 @@ describe('pacing', () => {
     expect(fast.intensity).toBeGreaterThan(calm.intensity);
   });
 });
+
+describe('script-specific entities', () => {
+  it('learns repeated names and cited series the knowledge base does not know', async () => {
+    const { parseScript, scriptEntities, EntityIndex, SEED_KNOWLEDGE } = await import('../../src/production');
+    const sc = parseScript('Il existe une entité nommée Despair. Plus tard, Despair rencontre Rao près de Krypton. Rao accepte.\n\n[SOURCE: The Sandman: Endless Nights (2003)]\n\nSuperman survit.');
+    const ents = scriptEntities(sc);
+    const names = ents.map((e) => e.name);
+    expect(names).toEqual(expect.arrayContaining(['Despair', 'Rao', 'The Sandman']));
+    expect(names).not.toContain('Superman'); // already in the curated base
+    expect(names).not.toContain('Krypton'); // mentioned once, not cited
+    const idx = new EntityIndex([...SEED_KNOWLEDGE, ...ents]);
+    expect(idx.find('Despair revient').some((m) => m.entityId === 'script:despair')).toBe(true);
+    expect(ents.every((e) => e.status === 'uncertain')).toBe(true);
+  });
+});

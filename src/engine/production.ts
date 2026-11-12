@@ -4,6 +4,7 @@
  * sequence plus a full report. Each stage reports progress through the TaskOrchestrator.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { type MediaAsset, type Project, type Sequence, type SequenceSettings, framesToSeconds, secondsToFrames } from '../core';
@@ -118,6 +119,8 @@ export interface ProductionRequest {
 export interface ProductionResult {
   sequence: Sequence;
   newMedia: MediaAsset[];
+  /** Sentence timings used for the edit (diagnostics, evaluation). */
+  timings?: { index: number; start: number; end: number; text: string }[];
   report: {
     sentences: number;
     beats: number;
@@ -179,7 +182,9 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       done++;
     }
   };
-  if (toRender.length) await Promise.all([worker(), worker()]);
+  // each FFmpeg render is itself multi-threaded: one worker per ~3 hardware threads (2–4)
+  const workers = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 3)));
+  if (toRender.length) await Promise.all(Array.from({ length: workers }, () => worker()));
 
   progress(0.8, 'Quality control');
   const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated].map((a) => [a.id, a])) };
@@ -208,6 +213,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   return {
     sequence: built.sequence,
     newMedia: [...scan.assets, ...built.generated].filter((a) => used.has(a.id)),
+    timings: alignment.sentences.map((a) => ({ index: a.index, start: a.start, end: a.end, text: script.sentences[a.index]?.text ?? '' })),
     report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: script.notes, entities, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

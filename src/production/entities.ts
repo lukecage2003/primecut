@@ -67,3 +67,43 @@ export class EntityIndex {
     return out;
   }
 }
+
+const COMMON_CAPS = new Set(
+  'mais et puis donc alors pourtant ensuite enfin aujourd hui imaginez imagine vous nous ce cette ces cela ici voici voila oui non car parce pourquoi comment quand dans avant apres pendant depuis selon chez tout tous rien personne chaque certains plusieurs autre autres premier premiere dernier derniere introduction conclusion source sources analyse critique'.split(' '),
+);
+
+/**
+ * Names specific to this script (characters, places, concepts the curated knowledge base does not
+ * know: Despair, Krakoa, Rao…): capitalised phrases repeated in the narration, plus the titles of
+ * the comic references it cites. They are matched against media names like known entities but are
+ * marked `uncertain` (no facts are attached to them).
+ */
+export function scriptEntities(script: { sentences: { text: string; sources?: string[] }[] }, base = new EntityIndex()): KnowledgeEntry[] {
+  const counts = new Map<string, { name: string; n: number; source: boolean }>();
+  const add = (name: string, source = false) => {
+    const clean = name.replace(/^[«"“(]+|[»"”),.;:!?]+$/g, '').trim();
+    const k = normalize(clean);
+    if (clean.length < 3 || !k || COMMON_CAPS.has(k) || STOPWORDS_FR.has(k) || /^\d+$/.test(k)) return;
+    if (base.find(clean).some((m) => m.entityId && normalize(m.surface) === k)) return; // already known
+    const c = counts.get(k) ?? { name: clean, n: 0, source: false };
+    c.n++;
+    c.source ||= source;
+    counts.set(k, c);
+  };
+  for (const s of script.sentences) {
+    for (const m of base.find(s.text)) if (m.kind === 'unknown' && m.name.split(' ').length <= 4) add(m.name);
+    for (const src of s.sources ?? []) {
+      const title = src.split(/\s*(?:#|\(|,|—|–|:\s)/)[0]!.trim();
+      if (title.length >= 3 && title.length <= 40) add(title, true);
+    }
+  }
+  // count every occurrence of each candidate, including sentence-initial ones the first pass skips
+  const all = normalize(script.sentences.map((s) => s.text).join(' '));
+  for (const [k, c] of counts) {
+    const n = all.split(new RegExp(`(?:^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^a-z0-9])`)).length - 1;
+    c.n = Math.max(c.n, n);
+  }
+  return [...counts.entries()]
+    .filter(([, c]) => c.n >= 2 || c.source)
+    .map(([k, c]) => ({ id: `script:${k.replace(/\s+/g, '-')}`, name: c.name, kind: c.source ? 'series' : 'concept', aliases: [], status: 'uncertain' as const }));
+}

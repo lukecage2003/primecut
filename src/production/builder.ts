@@ -27,10 +27,12 @@ import {
   specHash,
 } from '../core';
 import { decideVisual } from './visuals';
+import { scriptEntities } from './entities';
+import { SEED_KNOWLEDGE } from './knowledge';
 import { beatPacing, speechRates } from './pacing';
 import type { AlignmentResult } from './align';
 import { EntityIndex } from './entities';
-import { type Beat, buildBeats, chooseMedia, indexLibrary, pickMotion, reserveHinted } from './planner';
+import { type Beat, buildBeats, chooseMedia, indexLibrary, pickMotion, reserveHinted, scoreItem } from './planner';
 import type { ProductionPreferences } from './preferences';
 import type { ParsedScript } from './script';
 
@@ -80,7 +82,7 @@ export function buildSequence(input: BuildInput): BuildResult {
   const { prefs, settings } = input;
   const rate = settings.frameRate;
   const F = (sec: number) => secondsToFrames(sec, rate);
-  const index = input.entityIndex ?? new EntityIndex();
+  const index = input.entityIndex ?? new EntityIndex([...SEED_KNOWLEDGE, ...scriptEntities(input.script)]);
   const beats = buildBeats(input.script, input.alignment.sentences, prefs, index);
   const library = indexLibrary(input.library, index);
   const seq = createSequence(input.name, settings);
@@ -140,6 +142,20 @@ export function buildSequence(input: BuildInput): BuildResult {
       let len = Math.min(target, bEnd - t);
       if (bEnd - (t + len) < minF && bEnd - (t + len) > 0) len = bEnd - t; // avoid a tiny last shot
       const choice = chooseMedia(beat, library, recent, usage, prefs, sectionEntities, beats[bi + 1], reserved);
+      // a second shot inside a beat must not take the image the next beat is really about:
+      // the previous shot of this beat holds a little longer instead
+      const nextBeat = beats[bi + 1];
+      const prevClip = v1.clips.at(-1);
+      if (t > bStart && choice.item && nextBeat && prevClip && prevClip.start + prevClip.duration === t && shots.at(-1)?.beat === beat.index && input.library.find((a) => a.id === prevClip.mediaId)?.kind === 'image') {
+        const here = scoreItem(beat, choice.item).score;
+        const there = scoreItem(nextBeat, choice.item).score;
+        if (there > here && prevClip.duration + len <= Math.round(maxF * 1.5)) {
+          prevClip.duration += len;
+          shots.at(-1)!.end += len;
+          t += len;
+          continue;
+        }
+      }
       const generic = choice.quality === 'weak' && choice.reasons.some((r) => r.startsWith('no specific match'));
       if (prefs.proceduralVisuals && (!choice.item || generic)) {
         makeVisual(beat, t, len, [...(choice.item ? ['no relevant illustration'] : choice.reasons), 'web search: no provider enabled']);
@@ -223,22 +239,42 @@ export function buildSequence(input: BuildInput): BuildResult {
     if (end > start) captions.push({ id: newId(), start, end: Math.min(end, endFrame), text, style });
   };
   if (prefs.subtitles) {
+    const subs: { start: number; end: number; words: string[] }[] = [];
     for (const s of input.alignment.sentences) {
+      const chunks: (typeof s.words)[] = [];
       let chunk: typeof s.words = [];
-      const flush = () => {
-        if (!chunk.length) return;
-        const text = chunk.map((w) => w.text).join(' ');
-        const lines = wrapLines(text) ?? [text];
-        add(F(chunk[0]!.start), F(chunk.at(-1)!.end + 0.15), lines.join('\n'), 'subtitle');
-        chunk = [];
-      };
       for (const w of s.words) {
         const next = [...chunk, w].map((x) => x.text).join(' ');
-        if (chunk.length && !wrapLines(next)) flush();
+        if (chunk.length && !wrapLines(next)) (chunks.push(chunk), (chunk = []));
         chunk.push(w);
-        if (/[.!?;:]$/.test(w.text) && chunk.map((x) => x.text).join(' ').length > 30) flush();
+        if (/[.!?;:]$/.test(w.text) && chunk.map((x) => x.text).join(' ').length > 30) (chunks.push(chunk), (chunk = []));
       }
-      flush();
+      if (chunk.length) chunks.push(chunk);
+      // a very short chunk (one quick word) is merged into its neighbour when it still fits on two lines
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i]!;
+        const dur = c.at(-1)!.end - c[0]!.start;
+        if (dur >= 0.9 || chunks.length < 2) continue;
+        const prev = chunks[i - 1];
+        const nxt = chunks[i + 1];
+        if (prev && wrapLines([...prev, ...c].map((x) => x.text).join(' '))) {
+          prev.push(...c);
+          chunks.splice(i--, 1);
+        } else if (nxt && wrapLines([...c, ...nxt].map((x) => x.text).join(' '))) {
+          nxt.unshift(...c);
+          chunks.splice(i--, 1);
+        }
+      }
+      for (const c of chunks) subs.push({ start: c[0]!.start, end: c.at(-1)!.end + 0.15, words: c.map((x) => x.text) });
+    }
+    // every subtitle stays readable: at least 0.9 s when the next one leaves room
+    subs.forEach((x, i) => {
+      const room = (subs[i + 1]?.start ?? Infinity) - 0.05;
+      if (x.end - x.start < 0.9) x.end = Math.min(room, x.start + 0.9);
+    });
+    for (const x of subs) {
+      const text = x.words.join(' ');
+      add(F(x.start), F(x.end), (wrapLines(text) ?? [text]).join('\n'), 'subtitle');
     }
     // keep subtitles from overlapping
     captions.sort((a, b) => a.start - b.start);

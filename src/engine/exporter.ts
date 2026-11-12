@@ -249,7 +249,8 @@ export function buildExportPlan(
   }
   filters.push(`anullsrc=r=${SR}:cl=stereo,atrim=end_sample=${totalSamples}[abase]`);
   if (audioLabels.length) {
-    filters.push(`[abase]${audioLabels.join('')}amix=inputs=${audioLabels.length + 1}:duration=first:normalize=0:dropout_transition=0,atrim=end_sample=${totalSamples}[aout]`);
+    // master safety limiter: peaks stay below -1 dBFS (sample peak ≈ -1.5 dB leaves room for true peak)
+    filters.push(`[abase]${audioLabels.join('')}amix=inputs=${audioLabels.length + 1}:duration=first:normalize=0:dropout_transition=0,alimiter=limit=0.84:attack=2:release=60:level=false:latency=1,atrim=end_sample=${totalSamples}[aout]`);
   } else {
     filters.push(`[abase]anull[aout]`);
   }
