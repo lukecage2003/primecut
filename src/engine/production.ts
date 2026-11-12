@@ -200,11 +200,20 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const library = [...Object.values(req.project.media).filter((m) => m.id !== narration.id && m.id !== original.id && m.id !== music?.id && !m.derived), ...scan.assets];
 
   progress(0.6, 'Building the edit');
+  const tailNotes: string[] = [];
   const base = Object.values(req.project.sequences)[0]?.settings;
   const settings: SequenceSettings = { width: 1920, height: 1080, frameRate: { num: 30, den: 1 }, sampleRate: 48000, ...base, ...req.settings };
   const versions = Object.values(req.project.sequences).filter((s) => s.production).length;
   const name = req.name ?? `Auto v${versions + 1}`;
-  const built = buildSequence({ name, settings, script, alignment, narration, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs, pcorePlacement: req.pcorePlacement });
+  // a recording that ends with speech not in the script (outtake, retake) is cut after the last sentence
+  let narrationEndSec: number | undefined;
+  const lastEnd = alignment.sentences.at(-1)?.end ?? 0;
+  const tail = alignment.offScript?.find((o) => o.start >= lastEnd - 0.2 && o.end >= narration.probe.durationSec - 1.5);
+  if (tail) {
+    narrationEndSec = Math.min(tail.start - 0.05, lastEnd + 0.8);
+    tailNotes.push(`Outtake after the script left out (${tail.start.toFixed(1)}–${tail.end.toFixed(1)} s): “${tail.text.slice(0, 60)}…” — extend the narration clip to restore it`);
+  }
+  const built = buildSequence({ name, settings, script, alignment, narration, narrationEndSec, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs, pcorePlacement: req.pcorePlacement });
 
   // render procedural compositions (cached by spec hash) so they behave like ordinary media
   const pcoreNotes: string[] = [];
@@ -253,7 +262,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
 
   progress(0.8, 'Quality control');
   const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated, narration].map((a) => [a.id, a])) };
-  const endFrame = secondsToFrames(narration.probe.durationSec + 1, settings.frameRate);
+  const endFrame = secondsToFrames((narrationEndSec ?? narration.probe.durationSec) + 1, settings.frameRate);
   const fixes = autoFix(built.sequence, mediaMap, endFrame);
   built.sequence.production = {
     generatedAt: new Date().toISOString(),
@@ -274,7 +283,8 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       latencyMs: voice.latencyMs,
     },
   };
-  const qc = runQc(built.sequence, mediaMap, req.prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame });
+  const qc = runQc(built.sequence, mediaMap, req.prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame, offScript: alignment.offScript?.filter((o) => o !== tail) });
+  if (tail) qc.issues.push({ severity: 'info', code: 'outtake-cut', message: tailNotes[0]!, frame: secondsToFrames(narrationEndSec!, settings.frameRate) });
   built.sequence.production.qcScore = qc.score;
   built.sequence.production.qcIssues = qc.issues;
   built.sequence.production.style = measureStyle(built.sequence) as unknown as Record<string, unknown>;
@@ -287,6 +297,6 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     sequence: built.sequence,
     newMedia: [...scan.assets, ...built.generated, ...(narration !== original ? [narration] : [])].filter((a) => used.has(a.id)),
     timings: alignment.sentences.map((a) => ({ index: a.index, start: a.start, end: a.end, text: script.sentences[a.index]?.text ?? '' })),
-    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...voiceNotes, ...pcoreNotes], entities, voice, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
+    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...voiceNotes, ...tailNotes, ...pcoreNotes], entities, voice, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

@@ -45,6 +45,8 @@ export interface BuildInput {
   alignment: AlignmentResult;
   narration: MediaAsset;
   narrationLufs?: number | null;
+  /** Where the edit ends in the narration (s): an off-script tail (outtake) is left out. */
+  narrationEndSec?: number;
   music?: MediaAsset | null;
   musicLufs?: number | null;
   library: MediaAsset[];
@@ -92,7 +94,7 @@ export function buildSequence(input: BuildInput): BuildResult {
   const seq = createSequence(input.name, settings);
   const [v1, v2, a1, a2] = [seq.tracks[0]!, seq.tracks[1]!, seq.tracks[2]!, seq.tracks[3]!];
   void v2;
-  const narrDur = input.narration.probe.durationSec;
+  const narrDur = Math.min(input.narration.probe.durationSec, input.narrationEndSec ?? Infinity);
   const endFrame = F(narrDur + 1);
   const shots: ProductionShotMeta[] = [];
   const generated: MediaAsset[] = [];

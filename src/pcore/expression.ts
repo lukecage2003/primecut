@@ -42,7 +42,7 @@ export const DEFAULT_PCORE_SETTINGS: PCoreSettings = {
   intensity: 1,
   transitionMs: 450,
   speakingLevel: 0.35,
-  emphasisOnset: 0.7,
+  emphasisOnset: 0.25,
   intenseLevel: 0.72,
   idleAfter: 1.6,
   semantic: true,
@@ -123,6 +123,26 @@ export function voiceState(f: VoiceFrame, avg1s: number, s: PCoreSettings): PCor
 export function expressionTrack(voice: VoiceFrame[], fps: number, events: PCoreEvent[] = [], settings: Partial<PCoreSettings> = {}): PCoreFrame[] {
   const s = { ...DEFAULT_PCORE_SETTINGS, ...settings };
   const evs = [...events].filter((e) => s.semantic || e.source === 'marker').sort((a, b) => a.time - b.time);
+  // thresholds adapt to the narrator: emphasis = this voice's strongest attacks (top ~6 %), intense =
+  // its loudest sustained passages (top ~10 %). The settings stay as floors (sensitivity).
+  const q = (xs: number[], p: number) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))]! : 0);
+  const spoken = voice.filter((v) => v.speaking);
+  const avg1: number[] = [];
+  {
+    let acc = 0;
+    voice.forEach((v, i) => {
+      acc += v.env - (i >= fps ? voice[i - fps]!.env : 0);
+      if (v.speaking) avg1.push(acc / Math.min(i + 1, fps));
+    });
+  }
+  const adapted: PCoreSettings = { ...s, emphasisOnset: Math.max(s.emphasisOnset, q(spoken.map((v) => v.onset), 0.97)), intenseLevel: Math.max(s.intenseLevel, q(avg1, 0.9)) };
+  // a new voice state must last this long before it is shown (no flicker between syllables)
+  const dwell = Math.max(1, Math.round(0.3 * fps));
+  let shown: PCoreState = 'idle';
+  let cand: PCoreState = 'idle';
+  let candFor = 0;
+  // an emphasis is an event: at most one every 1.2 s
+  let sinceEmphasis = Infinity;
   const k = 1 - Math.exp(-1 / ((s.transitionMs / 1000) * fps / 3));
   const cur: Target = { ...TARGETS.idle };
   const out: PCoreFrame[] = [];
@@ -137,12 +157,24 @@ export function expressionTrack(voice: VoiceFrame[], fps: number, events: PCoreE
     win.push(v.env);
     if (win.length > fps) win.shift();
     const avg = win.reduce((a, b) => a + b, 0) / win.length;
-    let state = voiceState(v, avg, s);
-    // short emphases are held so they are visible (≥ 0.25 s)
+    let state = voiceState(v, avg, adapted);
+    sinceEmphasis++;
+    if (state === 'emphasis' && emphasisHold === 0) {
+      if (sinceEmphasis < 1.2 * fps) state = v.env >= adapted.speakingLevel ? 'speaking' : 'listening';
+      else sinceEmphasis = 0;
+    }
+    // short emphases are shown at once and held so they are visible (≥ 0.25 s)
     if (state === 'emphasis') emphasisHold = Math.round(0.25 * fps);
     else if (emphasisHold > 0 && v.speaking) {
       emphasisHold--;
       state = 'emphasis';
+    }
+    if (state === 'emphasis') shown = cand = state;
+    else {
+      if (state === cand) candFor++;
+      else (cand = state), (candFor = 1);
+      if (candFor >= dwell || shown === 'emphasis') shown = cand;
+      state = shown;
     }
     const ev = evs.find((e) => t >= e.time && t < e.time + e.duration);
     if (ev && (ev.source === 'marker' || ev.state === 'transition' || ev.state === 'reveal' || v.speaking)) state = ev.state;

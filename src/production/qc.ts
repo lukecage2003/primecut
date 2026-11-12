@@ -14,7 +14,7 @@ export interface QcResult {
 
 const PENALTY = { error: 15, warning: 4, info: 0 } as const;
 
-export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: ProductionPreferences, ctx: { alignmentConfidence?: number; narrationEnd?: number } = {}): QcResult {
+export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: ProductionPreferences, ctx: { alignmentConfidence?: number; narrationEnd?: number; offScript?: { start: number; end: number; text: string }[] } = {}): QcResult {
   const issues: QcIssue[] = [];
   const r = seq.settings.frameRate;
   const sec = (f: number) => framesToSeconds(f, r);
@@ -46,6 +46,7 @@ export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: P
   }
   // placeholders and weak matches
   const placeholders = seq.captions.filter((c) => c.style === 'placeholder').length;
+  for (const o of ctx.offScript ?? []) issues.push({ severity: 'warning', code: 'off-script', message: `Speech not in the script ${o.start.toFixed(1)}–${o.end.toFixed(1)} s (outtake or ad-lib?): “${o.text.slice(0, 80)}${o.text.length > 80 ? '…' : ''}”`, frame: Math.round((o.start * r.num) / r.den) });
   if (placeholders) issues.push({ severity: 'error', code: 'missing-visual', message: `${placeholders} shot(s) have no visual — add media or regenerate` });
   const weak = seq.production?.shots.filter((s) => s.quality === 'weak').length ?? 0;
   if (weak) issues.push({ severity: 'info', code: 'weak-match', message: `${weak} shot(s) use a generic image (no specific match)` });

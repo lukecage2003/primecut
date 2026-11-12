@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createProject, framesToSeconds, type MediaAsset } from '../../src/core';
 import { DEFAULT_PREFERENCES, EntityIndex, SEED_KNOWLEDGE, parseScript, scriptEntities } from '../../src/production';
-import { exportSequence, ffmpeg, importMediaFile, produceVideo, readScriptDocument, transcribe } from '../../src/engine';
+import { analyzeAudio, exportSequence, ffmpeg, importMediaFile, produceVideo, readScriptDocument, transcribe } from '../../src/engine';
 
 const args = Object.fromEntries(
   process.argv
@@ -118,8 +118,9 @@ async function measure(file: string) {
     truthFile = path.join(dir, 'truth.json');
     if (!fs.existsSync(wav)) execFileSync('python3', [path.join(__dirname, '..', 'scripts', 'eval', 'make-narration.py'), sj, wav, truthFile], { stdio: 'inherit' });
   }
-  const truth: { index: number; start: number; end: number }[] = JSON.parse(fs.readFileSync(truthFile!, 'utf8'));
-  report.narration = { seconds: +truth.at(-1)!.end.toFixed(1), ttsSec: secs(t0) };
+  // a real narration has no ground truth: sync is then judged against speech onsets (proxy)
+  const truth: { index: number; start: number; end: number }[] = truthFile ? JSON.parse(fs.readFileSync(truthFile, 'utf8')) : [];
+  report.narration = truthFile ? { seconds: +truth.at(-1)!.end.toFixed(1), ttsSec: secs(t0) } : { file: path.basename(wav), real: true };
 
   // 3. project + media
   const project = createProject(name, { width: W, height: H, frameRate: { num: 30, den: 1 } });
@@ -158,6 +159,14 @@ async function measure(file: string) {
   // sync vs truth
   const byIdx = new Map(res.timings!.map((x) => [x.index, x]));
   const errs = truth.map((tr) => Math.abs((byIdx.get(tr.index)?.start ?? NaN) - tr.start)).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  if (!truth.length) {
+    // proxy: distance from each sentence start to the nearest speech onset (silence → speech)
+    const na = await analyzeAudio(wav!);
+    const onsets = na.silences.map((x) => x.end);
+    for (const x of res.timings!) errs.push(Math.min(...onsets.map((o) => Math.abs(o - x.start)), Infinity));
+    errs.sort((a, b) => a - b);
+    report.syncProxy = 'no ground truth: sentence start vs nearest speech onset after a pause (upper bound for sentences that start after a pause; sentences joined without pause are counted too)';
+  }
   const q = (p: number) => +(errs[Math.min(errs.length - 1, Math.floor(p * errs.length))] ?? NaN).toFixed(3);
   const shots = seq.production!.shots;
   const v1 = seq.tracks[0]!;

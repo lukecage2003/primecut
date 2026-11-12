@@ -174,7 +174,7 @@ export function PCoreStudio() {
               <Range label="Intensity" value={s.intensity} min={0.3} max={1.5} step={0.05} onChange={(v) => setS({ intensity: v })} />
               <Range label="Transitions (ms)" value={s.transitionMs} min={100} max={1500} step={50} onChange={(v) => setS({ transitionMs: v })} />
               <Range label="Speaking level" value={s.speakingLevel} min={0.1} max={0.8} step={0.01} onChange={(v) => setS({ speakingLevel: v })} />
-              <Range label="Emphasis sensitivity" value={s.emphasisOnset} min={0.3} max={1} step={0.01} onChange={(v) => setS({ emphasisOnset: v })} />
+              <Range label="Emphasis threshold" value={s.emphasisOnset} min={0.1} max={0.8} step={0.01} onChange={(v) => setS({ emphasisOnset: v })} />
               <Range label="Intense level" value={s.intenseLevel} min={0.4} max={1} step={0.01} onChange={(v) => setS({ intenseLevel: v })} />
               <Range label="Idle after (s)" value={s.idleAfter} min={0.3} max={5} step={0.1} onChange={(v) => setS({ idleAfter: v })} />
               <label className="row" style={{ gap: 6 }}>

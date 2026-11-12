@@ -93,6 +93,10 @@ export function ExportDialog() {
         {s.hardware === 'auto' && profile !== 'balanced' && (
           <div className="tiny">Hardware encoding is used only with the Balanced performance profile (Settings). Current profile keeps the CPU encoder.</div>
         )}
+        <label className="row" style={{ gap: 6 }}>
+          <input type="checkbox" data-testid="export-subtitle-files" checked={s.subtitleFiles !== false} onChange={(e) => setS({ subtitleFiles: e.target.checked })} />
+          Also write the subtitles next to the video (.srt and .vtt, same name — replaced if present)
+        </label>
         <div className="tiny">The file is rendered to a temporary name, then verified (streams, resolution, exact frame count) before it is published.</div>
         <div className="actions">
           <button className="btn" onClick={close}>

@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 import type { MediaAsset, Project } from '../core/model';
+import { captionsToSubtitleFile } from '../core/captions';
 import {
   TaskOrchestrator,
   cacheDirs,
@@ -174,6 +175,13 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
       run: async (c) => {
         c.log(`encoder: ${encoder}`);
         const r = await exportSequence({ project: req.project, sequenceId: req.sequenceId, output: req.output, encoder, cacheDir: projectPaths(req.projectFile).cache, signal: c.signal, onProgress: (p) => c.progress(p), onLog: c.log });
+        // subtitle files next to the video (same base name), only when the sequence has subtitles
+        const seq = req.project.sequences[req.sequenceId];
+        if (seq && req.project.exportSettings.subtitleFiles !== false && seq.captions.some((x) => x.style === 'subtitle')) {
+          const base = req.output.replace(/\.[^.\\/]+$/, '');
+          for (const f of ['srt', 'vtt'] as const) await fs.promises.writeFile(`${base}.${f}`, captionsToSubtitleFile(seq, f), 'utf8');
+          c.log(`subtitles: ${path.basename(base)}.srt / .vtt`);
+        }
         const outcome: ExportOutcome = { output: req.output, encoder, frames: r.frames, durationSec: r.durationSec, width: r.width, height: r.height };
         exportResults.set(id, outcome);
         c.progress(1, `Verified · ${r.frames} frames · ${r.width}×${r.height}`);

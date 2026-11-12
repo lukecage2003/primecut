@@ -31,6 +31,7 @@ test('script + narration + folder → generated video', async () => {
   await expect(page.getByTestId('narration-select')).not.toHaveValue('');
   await stubOpenDialog(app, [lib]);
   await page.getByTestId('add-folder').click();
+  if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '05b-production-panel.png') });
   await page.getByTestId('generate').click();
   await expect(page.getByTestId('production-panel')).toHaveCount(0, { timeout: 60000 });
 
@@ -43,6 +44,7 @@ test('script + narration + folder → generated video', async () => {
   expect(score).toBeGreaterThanOrEqual(70);
   // the narration was cleaned into a derived copy; switching back to the original is one undoable edit
   await expect(page.getByTestId('voice-report')).toContainText('LUFS');
+  if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('production-report').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06b-report-voice.png') });
   await page.getByTestId('voice-use-original').click();
   await expect(page.getByTestId('voice-use-clean')).toBeVisible();
   await page.keyboard.press('Control+z');
@@ -58,11 +60,15 @@ test('script + narration + folder → generated video', async () => {
   await page.getByTestId('export-open').click();
   await stubSaveDialog(app, out);
   await page.getByTestId('export-browse').click();
+  if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06c-export-dialog.png') });
   await page.getByTestId('export-start').click();
   await expect(page.locator('[data-testid="task-export"]').first()).toHaveAttribute('data-state', 'done', { timeout: 120000 });
   const probe = JSON.parse((await ffprobe(['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', out])).stdout.toString());
   expect(Number(probe.format.duration)).toBeGreaterThan(6);
   expect(probe.streams.map((s: { codec_type: string }) => s.codec_type).sort()).toEqual(['audio', 'video']);
+  // subtitle files written next to the video
+  expect(fs.readFileSync(out.replace(/\.mp4$/, '.srt'), 'utf8')).toMatch(/^1\n00:00:\d\d,\d{3} --> .*\nSpider-Man/);
+  expect(fs.readFileSync(out.replace(/\.mp4$/, '.vtt'), 'utf8').startsWith('WEBVTT')).toBe(true);
 
   // save and reopen keeps the generated version and its report
   await page.keyboard.press('Control+s');

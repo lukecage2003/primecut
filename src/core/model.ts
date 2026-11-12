@@ -264,6 +264,8 @@ export interface ExportSettings {
   audioBitrateKbps: number;
   /** auto picks a working hardware encoder when available, falling back to CPU. */
   hardware: 'auto' | 'cpu';
+  /** Also write the subtitles next to the video (.srt and .vtt). Default on. */
+  subtitleFiles?: boolean;
 }
 
 export const DEFAULT_EXPORT: ExportSettings = {

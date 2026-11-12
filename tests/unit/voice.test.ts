@@ -51,3 +51,15 @@ describe('voice cleanup decisions', () => {
     expect(noiseSampleInterval([{ start: 1, end: 1.2 }])).toBeNull();
   });
 });
+
+describe('quiet recordings', () => {
+  it('a quiet voice is raised before the dynamics so de-esser and compressor thresholds act', () => {
+    const quiet = (t: number) => 0.02 * voice(t);
+    const q = measureVoiceQuality([signal(12, quiet).x], RATE);
+    const steps = planVoiceChain(q);
+    const gain = steps.find((s) => s.id === 'gain');
+    expect(gain).toBeTruthy();
+    expect(Number(/volume=([\d.]+)dB/.exec(gain!.filter)![1])).toBeGreaterThan(20);
+    expect(steps.findIndex((s) => s.id === 'gain')).toBeLessThan(steps.findIndex((s) => s.id === 'compress'));
+  });
+});

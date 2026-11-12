@@ -38,6 +38,8 @@ export interface AlignmentResult {
   method: 'pauses' | 'transcript';
   /** 0..1 — share of sentence boundaries anchored on real evidence (pause or recognised word). */
   confidence: number;
+  /** Recognised speech that matches no script text (outtakes, ad-libs, retakes). */
+  offScript?: { start: number; end: number; text: string }[];
 }
 
 /** Speech intervals from silence intervals over a total duration. */
@@ -332,7 +334,25 @@ export function alignToTranscript(sentences: ScriptSentence[], recognised: Recog
     out.push({ index: s.index, start: words[0]!.start, end: words.at(-1)!.end, words, method: 'transcript' });
   }
   if (speech?.length) snapToSpeech(out, speech);
-  return { sentences: out, method: 'transcript', confidence: out.length ? anchored / out.length : 0 };
+  // runs of recognised words that no script word was paired with: speech that is not in the script
+  const usedRec = new Uint8Array(m);
+  for (let k = 0; k < n; k++) {
+    if (match[k] !== null) usedRec[match[k]!] = 1;
+    if (weak[k] !== null) usedRec[weak[k]!] = 1;
+  }
+  const offScript: { start: number; end: number; text: string }[] = [];
+  for (let j = 0; j < m; ) {
+    if (usedRec[j]) {
+      j++;
+      continue;
+    }
+    let e = j;
+    while (e + 1 < m && !usedRec[e + 1]) e++;
+    const run = recognised.slice(j, e + 1);
+    if (run.length >= 5 && run.at(-1)!.end - run[0]!.start >= 1.5) offScript.push({ start: run[0]!.start, end: run.at(-1)!.end, text: run.map((w) => w.text).join(' ').replace(/\s+(['’-])\s*/g, '$1').slice(0, 160) });
+    j = e + 1;
+  }
+  return { sentences: out, method: 'transcript', confidence: out.length ? anchored / out.length : 0, offScript };
 }
 
 /**

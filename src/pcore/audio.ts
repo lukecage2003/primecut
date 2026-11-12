@@ -115,8 +115,9 @@ export function analyzeVoice(samples: Float32Array, sampleRate: number, opts: Pa
     const target = Math.min(1, level[f]! * o.sensitivity);
     const prev = env;
     env += (target - env) * (target > env ? ka : kr);
-    const onset = Math.max(0, Math.min(1, (env - prev) * 6));
-    if (onset > 0.25 && (onsets.length === 0 || f - onsets.at(-1)! > o.fps * 0.12)) onsets.push(f);
+    // scaled so strong attacks stay below saturation (emphasis is chosen among the strongest)
+    const onset = Math.max(0, Math.min(1, (env - prev) * 2));
+    if (onset > 0.0833 && (onsets.length === 0 || f - onsets.at(-1)! > o.fps * 0.12)) onsets.push(f);
     // gate with hysteresis + minimum silence
     if (target >= o.openThreshold) {
       open = true;

@@ -103,3 +103,20 @@ export function captionsToAss(seq: Sequence, captions: Caption[] = seq.captions,
   }
   return lines.join('\n') + '\n';
 }
+
+/** Subtitle files (SRT / WebVTT) from the sequence's subtitle captions, in sequence time. */
+export function captionsToSubtitleFile(seq: Sequence, format: 'srt' | 'vtt', styles: CaptionStyle[] = ['subtitle']): string {
+  const r = seq.settings.frameRate;
+  const stamp = (f: number) => {
+    const ms = Math.max(0, Math.round((f * r.den * 1000) / r.num));
+    const p = (n: number, w = 2) => String(n).padStart(w, '0');
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor(ms / 60000) % 60;
+    const sec = Math.floor(ms / 1000) % 60;
+    return `${p(h)}:${p(m)}:${p(sec)}${format === 'srt' ? ',' : '.'}${p(ms % 1000, 3)}`;
+  };
+  const cues = seq.captions.filter((c) => styles.includes(c.style) && c.text.trim() && c.end > c.start).sort((a, b) => a.start - b.start);
+  const body = cues.map((c, i) => `${format === 'srt' ? `${i + 1}\n` : ''}${stamp(c.start)} --> ${stamp(c.end)}\n${c.text.trim().replace(/\r/g, '').replace(format === 'vtt' ? /-->/g : /$^/, '→')}\n`).join('\n');
+  return format === 'vtt' ? `WEBVTT\n\n${body}` : body;
+}
+

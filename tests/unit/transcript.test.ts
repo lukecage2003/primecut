@@ -79,3 +79,17 @@ describe('implausible lone matches', () => {
     expect(match[22]).toBe(26);
   });
 });
+
+describe('speech that is not in the script', () => {
+  it('reports an outtake at the end of the recording as off-script speech', async () => {
+    const { alignToTranscript, parseScript } = await import('../../src/production');
+    const script = parseScript('Peter Parker est mordu par une araignée radioactive. Il signe avec Oscorp et il rentre.');
+    const said = 'Peter Parker est mordu par une araignée radioactive il signe avec Oscorp et il rentre oh lala mais ça commence à m énerver franchement'.split(' ');
+    const rec = said.map((text, i) => ({ text, start: i * 0.4, end: i * 0.4 + 0.35 }));
+    const a = alignToTranscript(script.sentences, rec);
+    expect(a.offScript).toHaveLength(1);
+    expect(a.offScript![0]!.text).toMatch(/^oh lala/);
+    expect(a.offScript![0]!.start).toBeCloseTo(15 * 0.4, 5);
+    expect(a.sentences.at(-1)!.end).toBeLessThan(a.offScript![0]!.start);
+  });
+});
