@@ -31,5 +31,14 @@ domain package, immer-based history, JSON project bundle.
   settled decoded frame (the app behaviour was correct).
 - Test expectations corrected for lavfi sine amplitude and 5 s still at 29.97 = 149 frames.
 
-**Next concrete task:** Phase 2 — transitions (cross-dissolve) and audio fades in core + exporter
-+ preview, then nesting and titles.
+### Phase 2 started
+- Schema v2 (first real migration): `Track.transitions`, `Clip.fadeIn/fadeOut`.
+- `core/transitions.ts` (add/remove/duration, Ctrl+D at nearest cut, handle math, normalisation) and
+  `core/plan.ts` (render plan used by both preview and export).
+- Exporter and preview now consume the plan. Timeline draws transitions and fade wedges; Inspector
+  edits fades and transition duration.
+- Found while testing: Playwright `app.close()` hangs if the project is dirty because the app
+  (correctly) asks to save — the E2E test now asserts that prompt.
+
+**Next concrete task:** nesting (sequence as clip), titles track (text rendering shared by preview
+and export), copy/paste and box selection.

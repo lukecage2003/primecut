@@ -6,9 +6,9 @@ no GPU), Node 22, Electron 45.3.1, FFmpeg 6.1.1 (system), Xvfb.
 | Suite | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
-| Unit (core) | `npx vitest run tests/unit` | ✅ 23 / 23 |
-| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 12 / 12 |
-| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 2 / 2 |
+| Unit (core) | `npx vitest run tests/unit` | ✅ 33 / 33 |
+| Integration (engine + real FFmpeg) | `npx vitest run tests/integration` | ✅ 13 / 13 |
+| End-to-end (Electron UI, Xvfb) | `npx playwright test` | ✅ 3 / 3 |
 | Packaged build smoke (linux-unpacked) | `electron-builder --linux dir` + launch | ✅ starts, dashboard renders |
 | Windows CI job | `.github/workflows/ci.yml` | ⏳ not yet observed (no Windows runner in this environment) |
 
@@ -34,6 +34,12 @@ snapping, undo/redo, save, quitting, relaunch, reopening from the recent list, e
 export through the dialog and verification of the produced file (1920×1080, 150 frames, colours,
 silent gap, audio present). Crash recovery: SIGKILL after autosave, relaunch, Recover prompt,
 restored edit, save clears autosave.
+
+**Phase 2 additions:** transitions (centring, handle clamping, refusal without handles, Ctrl+D on
+video+audio, pruning when clips separate, following splits, duration clamp), fades (linked, clamped),
+render plan (extensions, ramps, layer order, disabled tracks/clips), schema v1→v2 migration; export
+of a dissolve verified as a ~50% red/blue mix at the cut, fade from black, audio crossfade; UI test
+of Ctrl+D, transition selection/delete/undo, fade slider, and the unsaved-changes prompt on close.
 
 ## Not covered yet
 GPU encoders/decoders (no GPU here), Windows-specific paths (covered by CI job once run), long

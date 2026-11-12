@@ -24,6 +24,13 @@ export function validateProject(p: Project): string[] {
         const m = p.media[c.mediaId];
         if (!m) issues.push(`${where}: references missing media ${c.mediaId}`);
         else if (t.kind === 'audio' && !m.probe.audio) issues.push(`${where}: audio clip on media without audio`);
+        if (!(c.fadeIn >= 0 && c.fadeOut >= 0 && c.fadeIn + c.fadeOut <= c.duration)) issues.push(`${where}: invalid fades`);
+      }
+      for (const tr of t.transitions ?? []) {
+        const i = t.clips.findIndex((c) => c.id === tr.leftClipId);
+        const r = t.clips[i + 1];
+        if (i < 0 || !r || r.id !== tr.rightClipId || clipEnd(t.clips[i]!) !== r.start) issues.push(`${seq.name}/${t.name}: transition ${tr.id} is not on a cut`);
+        if (!(tr.duration >= 2)) issues.push(`${seq.name}/${t.name}: transition ${tr.id} too short`);
       }
     }
   }

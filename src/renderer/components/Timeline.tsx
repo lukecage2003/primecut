@@ -20,7 +20,7 @@ import {
   linkedGroup,
   removeMarker,
 } from '../../core';
-import { addToTimeline, clearPreview, edit, previewEdit, setPlayhead, splitAtPlayhead } from '../actions';
+import { addDefaultTransition, addToTimeline, clearPreview, edit, previewEdit, setPlayhead, splitAtPlayhead } from '../actions';
 import { pause } from '../playback';
 import { type Tool, currentProject, currentSequence, store, useEditor } from '../store';
 import { MEDIA_MIME } from './MediaLibrary';
@@ -130,6 +130,9 @@ export function Timeline() {
         <div className="sep" />
         <button className="btn ghost" title="Split at playhead (S / Ctrl+K)" onClick={splitAtPlayhead} data-testid="split">
           Split
+        </button>
+        <button className="btn ghost" title="Cross-dissolve at the cut nearest the playhead (Ctrl+D)" onClick={addDefaultTransition} data-testid="add-transition">
+          Dissolve
         </button>
         <button className={`btn ${snapping ? 'active' : 'ghost'}`} title="Snapping" onClick={() => store.setEditor((x) => ({ snapping: !x.snapping }))}>
           Snap
@@ -294,7 +297,7 @@ function TrackRow({ track, seq, zoom, frameAt }: { track: Track; seq: Sequence; 
       data-kind={track.kind}
       data-index={idx}
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget) store.setEditor({ selection: [] });
+        if (e.target === e.currentTarget) store.setEditor({ selection: [], selectedTransition: null });
       }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes(MEDIA_MIME) && !track.locked) {
@@ -317,6 +320,14 @@ function TrackRow({ track, seq, zoom, frameAt }: { track: Track; seq: Sequence; 
       {track.clips.map((c) => (
         <ClipView key={c.id} clip={c} track={track} zoom={zoom} frameAt={frameAt} />
       ))}
+      {track.transitions.map((tr) => {
+        const right = track.clips.find((c) => c.id === tr.rightClipId);
+        if (!right) return null;
+        const before = Math.floor(tr.duration / 2);
+        return (
+          <TransitionView key={tr.id} id={tr.id} left={(right.start - before) * zoom} width={tr.duration * zoom} label={`Cross dissolve · ${tr.duration}f`} />
+        );
+      })}
     </div>
   );
 }
@@ -349,7 +360,7 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
       const has = ed.selection.includes(clip.id);
       store.setEditor({ selection: has ? ed.selection.filter((id) => !group.includes(id)) : [...new Set([...ed.selection, ...group])] });
     } else if (!ed.selection.includes(clip.id)) {
-      store.setEditor({ selection: group });
+      store.setEditor({ selection: group, selectedTransition: null });
     }
     if (track.locked) return;
     let m = mode;
@@ -462,6 +473,8 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
         {offline ? '⚠ ' : ''}
         {clip.name}
       </div>
+      {clip.fadeIn > 0 && <div className="fade in" style={{ width: clip.fadeIn * zoom }} />}
+      {clip.fadeOut > 0 && <div className="fade out" style={{ width: clip.fadeOut * zoom }} />}
       {clip.linkId && <span className="link">🔗</span>}
       {w > 18 && (
         <>
@@ -472,6 +485,22 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
     </div>
   );
 });
+
+function TransitionView({ id, left, width, label }: { id: string; left: number; width: number; label: string }) {
+  const selected = useEditor((e) => e.selectedTransition === id);
+  return (
+    <div
+      className={`transition ${selected ? 'selected' : ''}`}
+      style={{ left, width: Math.max(8, width) }}
+      title={`${label} — Delete to remove`}
+      data-testid="transition"
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        store.setEditor({ selectedTransition: id, selection: [] });
+      }}
+    />
+  );
+}
 
 function Wave({ peaks, clip, width, height }: { peaks: Uint8Array; clip: Clip; width: number; height: number; fps: number }) {
   const ref = useRef<HTMLCanvasElement>(null);

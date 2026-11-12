@@ -8,7 +8,7 @@
  *   drift by more than ~3 frames. While paused, elements are seeked exactly to the frame.
  * - Clips starting within the next 2 s are pre-loaded and pre-seeked to avoid gaps on cuts.
  */
-import { type Clip, type MediaAsset, type Project, type Sequence, type Track, framesToSeconds, rateToNumber } from '../core';
+import { type Clip, type MediaAsset, type Project, type Sequence, framesToSeconds, planSequence, rampAt, rateToNumber } from '../core';
 import { mediaUrl } from '../shared/api';
 
 interface Layer {
@@ -110,61 +110,49 @@ export class PreviewEngine {
     const visible = new Set<string>();
     let z = 1;
 
-    const sourceTime = (clip: Clip, f: number) => clip.sourceIn + framesToSeconds(f - clip.start, rate) * clip.speed;
-
-    const videoTracks = seq.tracks.filter((t) => t.kind === 'video');
-    const audioTracks = seq.tracks.filter((t) => t.kind === 'audio');
-
-    const handle = (track: Track, kind: 'video' | 'audio') => {
-      if (track.disabled) return;
-      for (const clip of track.clips) {
-        const media = project.media[clip.mediaId];
-        if (!media || !clip.enabled) continue;
-        const active = clip.start <= frame && frame < clip.start + clip.duration;
-        const upcoming = !active && playing && clip.start > frame && clip.start - frame < PRELOAD_SEC * fps;
-        if (!active && !upcoming) continue;
-        if (kind === 'video' && !media.probe.video) continue;
-        if (kind === 'audio' && !media.probe.audio) continue;
-        const l = this.ensure(clip, media, kind);
-        if (!l) continue;
-        const key = `${kind}:${clip.id}`;
-        visible.add(key);
-        const el = l.el;
-        if (upcoming) {
-          // pre-seek to the clip's first frame, paused and hidden
-          if (el instanceof HTMLMediaElement) {
-            el.style.display = 'none';
-            if (!el.paused) el.pause();
-            const t0 = clip.sourceIn;
-            if (Math.abs(el.currentTime - t0) > 0.05 && !el.seeking) el.currentTime = t0;
-          }
-          continue;
-        }
-        const t = sourceTime(clip, frame);
-        if (kind === 'video') {
-          this.layout(el as HTMLElement, media, clip, W, H, z++);
-          el.style.display = 'block';
-        }
+    const plan = planSequence(seq, project.media);
+    for (const it of plan) {
+      const { clip, media, kind } = it;
+      const active = it.start <= frame && frame < it.end;
+      const upcoming = !active && playing && it.start > frame && it.start - frame < PRELOAD_SEC * fps;
+      if (!active && !upcoming) continue;
+      const l = this.ensure(clip, media, kind);
+      if (!l) continue;
+      const key = `${kind}:${clip.id}`;
+      visible.add(key);
+      const el = l.el;
+      if (upcoming) {
+        // pre-seek to the item's first frame, paused and hidden
         if (el instanceof HTMLMediaElement) {
-          if (kind === 'audio') {
-            const lin = Math.pow(10, clip.gainDb / 20);
-            if (l.gain) l.gain.gain.value = lin;
-            else el.volume = Math.min(1, lin);
-          }
-          if (playing) {
-            if (Math.abs(el.currentTime - t) > DRIFT_PLAYING && !el.seeking) el.currentTime = t;
-            if (el.paused) void el.play().catch(() => undefined);
-          } else {
-            if (!el.paused) el.pause();
-            // Seek to the middle of the frame so decoders land on the intended frame.
-            const target = t + 0.5 / fps;
-            if (Math.abs(el.currentTime - target) > 0.25 / fps && !el.seeking) el.currentTime = target;
-          }
+          el.style.display = 'none';
+          if (!el.paused) el.pause();
+          if (Math.abs(el.currentTime - it.sourceIn) > 0.05 && !el.seeking) el.currentTime = Math.max(0, it.sourceIn);
+        }
+        continue;
+      }
+      const t = it.sourceIn + framesToSeconds(frame - it.start, rate) * clip.speed;
+      const ramp = rampAt(it, frame);
+      if (kind === 'video') {
+        this.layout(el as HTMLElement, media, clip, W, H, z++, ramp);
+        el.style.display = 'block';
+      }
+      if (el instanceof HTMLMediaElement) {
+        if (kind === 'audio') {
+          const lin = Math.pow(10, clip.gainDb / 20) * ramp;
+          if (l.gain) l.gain.gain.value = lin;
+          else el.volume = Math.min(1, lin);
+        }
+        if (playing) {
+          if (Math.abs(el.currentTime - t) > DRIFT_PLAYING && !el.seeking) el.currentTime = t;
+          if (el.paused) void el.play().catch(() => undefined);
+        } else {
+          if (!el.paused) el.pause();
+          // Seek to the middle of the frame so decoders land on the intended frame.
+          const target = t + 0.5 / fps;
+          if (Math.abs(el.currentTime - target) > 0.25 / fps && !el.seeking) el.currentTime = target;
         }
       }
-    };
-    for (const t of videoTracks) handle(t, 'video');
-    for (const t of audioTracks) handle(t, 'audio');
+    }
 
     for (const [key, l] of this.layers) {
       if (visible.has(key)) continue;
@@ -174,7 +162,7 @@ export class PreviewEngine {
     }
   }
 
-  private layout(el: HTMLElement, media: MediaAsset, clip: Clip, W: number, H: number, z: number) {
+  private layout(el: HTMLElement, media: MediaAsset, clip: Clip, W: number, H: number, z: number, ramp: number) {
     const v = media.probe.video!;
     const rot = v.rotation % 180 !== 0;
     const w = rot ? v.height : v.width;
@@ -190,7 +178,7 @@ export class PreviewEngine {
     el.style.height = `${oh * s}px`;
     el.style.transform = `translate(${x * s}px, ${y * s}px) rotate(${tr.rotation}deg)`;
     el.style.transformOrigin = `${(ow * s) / 2}px ${(oh * s) / 2}px`;
-    el.style.opacity = String(tr.opacity);
+    el.style.opacity = String(tr.opacity * ramp);
     el.style.zIndex = String(z);
   }
 

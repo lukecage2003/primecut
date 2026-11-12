@@ -1,6 +1,6 @@
 # Architecture — Primestone Motion Studio
 
-Status: reflects the code at v0.1.0 (Phase 1 vertical slice).
+Status: reflects the code at v0.2.0-dev (Phase 1 complete, Phase 2 in progress).
 
 ## Layers and responsibilities
 
@@ -56,7 +56,16 @@ Operations (`core/timeline.ts`): place (overwrite/insert), clearRange (overwrite
 razor, move (with track change, linked A/V), delete / ripple delete, trim (normal/ripple, media and
 neighbour constraints), roll, slip, slide, track lock/disable, markers, clip properties, unlink.
 
-## Native project format (`.psproj`, schema v1)
+## Render plan (shared by preview and export)
+
+`core/plan.ts` turns a sequence into `PlanItem`s: effective start/end (clips extended into their
+handles by transitions), source in-point, opacity/volume ramps (fades, dissolves, crossfades) and
+layer order. The exporter compiles plan items into FFmpeg (`fade=…:alpha=1`, `afade`), the preview
+applies the same ramps to element opacity / Web Audio gain — one definition, two renderers.
+After every edit `normalizeSequence` prunes transitions whose clips are no longer adjacent and
+clamps durations to the available handles.
+
+## Native project format (`.psproj`, schema v2)
 
 Folder layout: `<Project>/<Project>.psproj`, `Autosave/`, `Backups/` (20 rotating snapshots taken
 before each save), `Cache/{thumbs,peaks,proxies}` (disposable).

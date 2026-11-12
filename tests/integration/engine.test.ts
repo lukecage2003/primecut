@@ -281,3 +281,52 @@ describe('hardware', () => {
     expect(Array.isArray(r.hwEncoders)).toBe(true);
   });
 });
+
+describe('transitions & fades in export', async () => {
+  const { addTransitionsAt, setClipFades, normalizeSequence } = await import('../../src/core');
+  it('renders a cross-dissolve as a 50% mix at the cut and fades from black', async () => {
+    const r = await makeColorClip(path.join(dir, 'red4.mp4'), 'red', 4);
+    const b = await makeColorClip(path.join(dir, 'blue4.mp4'), 'blue', 4, { freq: 880 });
+    const p = createProject('X', { width: 320, height: 180, frameRate: { num: 30, den: 1 } });
+    const ra = await importMediaFile(r);
+    const ba = await importMediaFile(b);
+    p.media[ra.id] = ra;
+    p.media[ba.id] = ba;
+    const h = new History(p);
+    const S = (d: Project) => d.sequences[d.activeSequenceId]!;
+    // red 0..60 (source 0..2s, tail handle 2s) ; blue 60..120 with source starting at 1s (head handle 1s)
+    h.commit('r', (d) => placeMedia(S(d), d.media[ra.id]!, { videoTrack: 0, audioTrack: 0, start: 0, mode: 'overwrite' }));
+    h.commit('trim', (d) => trimClip(S(d), d.media, S(d).tracks[0]!.clips[0]!.id, 'out', -60));
+    h.commit('b', (d) => placeMedia(S(d), d.media[ba.id]!, { videoTrack: 0, audioTrack: 0, start: 60, mode: 'overwrite' }));
+    const blueV = S(h.present).tracks[0]!.clips[1]!.id;
+    h.commit('trim b', (d) => trimClip(S(d), d.media, blueV, 'in', 30)); // blue now 90..180? keep adjacency below
+    h.commit('move b', (d) => moveClips(S(d), [blueV], -30)); // back to 60, source in = 1s
+    h.commit('dissolve', (d) => addTransitionsAt(S(d), d.media, 60, 30));
+    h.commit('fade', (d) => {
+      setClipFades(S(d), S(d).tracks[0]!.clips[0]!.id, { fadeIn: 30 });
+      normalizeSequence(S(d), d.media);
+    });
+    expect(validateProject(h.present)).toEqual([]);
+    expect(S(h.present).tracks[0]!.transitions[0]!.duration).toBe(30);
+    const out = path.join(dir, 'out', 'dissolve.mp4');
+    const res = await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out });
+    expect(res.frames).toBe(150);
+    const [r0, , b0] = await frameColor(out, 1 / 60); // frame 0 of a 30-frame fade from black
+    expect(r0).toBeLessThan(30);
+    expect(b0).toBeLessThan(30);
+    const [rh] = await frameColor(out, 0.5 + 1 / 60); // frame 15: ~half
+    expect(rh).toBeGreaterThan(90);
+    expect(rh).toBeLessThan(170);
+    const [rm, , bm] = await frameColor(out, 2 + 1 / 60); // frame 60: middle of the dissolve
+    expect(rm).toBeGreaterThan(90);
+    expect(rm).toBeLessThan(170);
+    expect(bm).toBeGreaterThan(90);
+    expect(bm).toBeLessThan(170);
+    const [r3, , b3] = await frameColor(out, 3); // after the dissolve: blue
+    expect(r3).toBeLessThan(40);
+    expect(b3).toBeGreaterThan(200);
+    // audio: both tones present during the crossfade, fade-in starts silent
+    expect(await audioRms(out, 0, 0.1)).toBeLessThan(0.02);
+    expect(await audioRms(out, 1.8, 2.2)).toBeGreaterThan(0.03);
+  });
+});

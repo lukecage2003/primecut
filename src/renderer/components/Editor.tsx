@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { sequenceDuration } from '../../core';
-import { closeProject, deleteSelection, edit, redo, save, setPlayhead, splitAtPlayhead, undo } from '../actions';
+import { addDefaultTransition, closeProject, deleteSelection, edit, redo, save, setPlayhead, splitAtPlayhead, undo } from '../actions';
 import { addMarker } from '../../core';
 import { pause, play, togglePlay } from '../playback';
 import { type Tool, currentSequence, store, useEditor, useStore } from '../store';
@@ -27,6 +27,7 @@ function onKey(ev: KeyboardEvent) {
   if ((mod && k === 'z' && ev.shiftKey) || (mod && k === 'y')) return handled(), redo();
   if (mod && k === 's') return handled(), void save();
   if (mod && k === 'k') return handled(), splitAtPlayhead();
+  if (mod && k === 'd') return handled(), addDefaultTransition();
   if (mod) return;
   switch (ev.key) {
     case ' ':

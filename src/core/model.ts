@@ -1,7 +1,7 @@
 import type { Rational } from './time';
 
 /** Current native project schema version. Bump together with a migration in migrations.ts. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type MediaKind = 'video' | 'audio' | 'image';
 export type TrackKind = 'video' | 'audio';
@@ -84,6 +84,23 @@ export interface Clip {
   gainDb: number;
   /** Video transform (video clips). */
   transform: ClipTransform;
+  /** Fade from/to transparent (video) or silence (audio), in frames. */
+  fadeIn: number;
+  fadeOut: number;
+}
+
+export type TransitionKind = 'cross-dissolve';
+
+/**
+ * A transition sits on the cut between two adjacent clips of the same track, centred on the cut:
+ * floor(duration/2) frames before it and the rest after it. Both clips need enough source handles.
+ */
+export interface Transition {
+  id: string;
+  kind: TransitionKind;
+  leftClipId: string;
+  rightClipId: string;
+  duration: number;
 }
 
 export interface Track {
@@ -95,6 +112,7 @@ export interface Track {
   disabled: boolean;
   /** Clips sorted by start, never overlapping. */
   clips: Clip[];
+  transitions: Transition[];
 }
 
 export interface Marker {
@@ -165,6 +183,7 @@ export function createTrack(kind: TrackKind, index: number): Track {
     locked: false,
     disabled: false,
     clips: [],
+    transitions: [],
   };
 }
 

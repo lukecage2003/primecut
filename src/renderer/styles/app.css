@@ -242,3 +242,11 @@ input, select, button, textarea { font: inherit; color: inherit; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.transition { position: absolute; top: 10px; bottom: 10px; z-index: 4; border-radius: 6px; cursor: pointer;
+  background: linear-gradient(90deg, rgba(255,196,0,.15), rgba(255,196,0,.55) 50%, rgba(255,196,0,.15)), linear-gradient(to top right, transparent calc(50% - 1px), rgba(0,0,0,.45) 50%, transparent calc(50% + 1px));
+  border: 1px solid rgba(255,196,0,.8); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.transition.selected { outline: 2px solid #fff; }
+.clip .fade { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
+.clip .fade.in { left: 0; background: linear-gradient(to top left, transparent 49%, rgba(0,0,0,.45) 51%); }
+.clip .fade.out { right: 0; background: linear-gradient(to top right, transparent 49%, rgba(0,0,0,.45) 51%); }

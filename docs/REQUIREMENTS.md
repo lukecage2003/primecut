@@ -34,7 +34,8 @@ Evidence refers to test files (U = tests/unit, I = tests/integration, E = tests/
 | TL-07 | Move (time + track), overwrite semantics | Done | U, E |
 | TL-08 | Trim, ripple, roll, slip, slide | Done | U timeline (each op + clamping); UI tools B/N/Y/U |
 | TL-09 | Keyframes & Bézier curves | Planned | Phase 4 |
-| TL-10 | Transitions | Planned | Phase 2 |
+| TL-10 | Transitions | Partial | Cross-dissolve (video) + crossfade (audio), centred, handle-limited, auto-pruned; U transitions, I export (50% mix at cut), E phase2. Other transition types planned |
+| TL-17 | Clip fades in/out (video from/to transparent, audio from/to silence) | Done | U transitions, I export (fade from black, silent start), E phase2 |
 | TL-11 | Markers | Done | U; UI (M key, double-click to delete) |
 | TL-12 | Nesting | Planned | Phase 2 |
 | TL-13 | Track lock / disable (hide/mute) | Done | U (locked edits refused), I export ignores disabled tracks via plan |
@@ -46,7 +47,7 @@ Evidence refers to test files (U = tests/unit, I = tests/integration, E = tests/
 
 | ID | Requirement | Status | Evidence |
 |---|---|---|---|
-| PF-01 | Versioned native format + migrations | Done | U migrations, I refuses newer schema |
+| PF-01 | Versioned native format + migrations | Done | U migrations (incl. real v1→v2), I refuses newer schema |
 | PF-02 | Integrity (checksum) | Done | I tampered file rejected |
 | PF-03 | Atomic writes (transactions) | Done | projectStore.atomicWrite |
 | PF-04 | Autosave + crash recovery | Done | I autosave, E crash recovery (SIGKILL) |

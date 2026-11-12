@@ -13,7 +13,8 @@ Honest list; each item has a planned phase.
   only after their proxy is generated (background task).
 
 ## Editing
-- No transitions, keyframes, effects, titles, nesting or copy/paste yet (Phase 2/4).
+- Only one transition type (cross-dissolve / audio crossfade). No keyframes, effects, titles, nesting or copy/paste yet (Phase 2/4).
+- Transitions need real source handles on both sides; Primestone does not invent frozen frames.
 - Ripple operations affect the edited clip's track(s) and linked tracks only, not all tracks.
 - Clip speed changes are modelled (`speed`) but not exposed (always 1×).
 - Sequence settings cannot be changed after creation.

@@ -40,6 +40,7 @@ export interface EditorSession {
   peaks: Record<string, Uint8Array>;
   proxies: Record<string, string>;
   selectedMedia: string | null;
+  selectedTransition: string | null;
   snapAt: number | null;
   savedAt: string;
   version: number; // bumps on history change

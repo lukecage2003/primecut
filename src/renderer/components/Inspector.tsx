@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { type Clip, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, setClipProps, unlinkClips } from '../../core';
-import { clearPreview, edit, previewEdit } from '../actions';
+import { type Clip, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
+import { clearPreview, deleteSelectedTransition, edit, previewEdit } from '../actions';
 import { currentProject, currentSequence, useEditor } from '../store';
 
 function Slider({ label, value, min, max, step, fmt, onPreview, onCommit, testid }: {
@@ -48,7 +48,21 @@ export function Inspector() {
   const audio = clips.find((c) => c.track.kind === 'audio');
   const primary = video ?? audio;
   const rate = seq.settings.frameRate;
+  const fps = rate.num / rate.den;
   const tc = (f: number) => framesToTimecode(f, rate);
+  const selectedTransition = useEditor((e) => e.selectedTransition);
+  const trInfo = (() => {
+    if (!selectedTransition) return null;
+    for (const t of seq.tracks) {
+      const tr = t.transitions.find((x) => x.id === selectedTransition);
+      if (!tr) continue;
+      const i = t.clips.findIndex((c) => c.id === tr.leftClipId);
+      const l = t.clips[i];
+      const r = t.clips[i + 1];
+      return { tr, track: t, max: l && r ? maxTransitionDuration(seq, project.media, l, r) : tr.duration };
+    }
+    return null;
+  })();
 
   const setProps = (id: string, props: Partial<Clip>, label: string, commit: boolean) => {
     if (commit) {
@@ -63,7 +77,33 @@ export function Inspector() {
         <h3>Inspector</h3>
       </div>
       <div className="panel-body">
-        {!primary && (
+        {trInfo && (
+          <div className="insp" data-testid="transition-inspector">
+            <div className="section-title">Transition · {trInfo.track.name}</div>
+            <dl className="kv">
+              <dt>Type</dt>
+              <dd>Cross dissolve</dd>
+              <dt>Duration</dt>
+              <dd>{tc(trInfo.tr.duration)} ({trInfo.tr.duration} f)</dd>
+              <dt>Max (handles)</dt>
+              <dd>{trInfo.max} f</dd>
+            </dl>
+            <Slider
+              label="Duration"
+              value={trInfo.tr.duration}
+              min={2}
+              max={Math.max(2, trInfo.max)}
+              step={1}
+              fmt={(v) => `${(v / fps).toFixed(2)}s`}
+              onPreview={(v) => previewEdit((s, m) => void setTransitionDuration(s, m, trInfo.tr.id, v))}
+              onCommit={(v) => (clearPreview(), edit('Transition duration', (s, m) => setTransitionDuration(s, m, trInfo.tr.id, v)))}
+            />
+            <button className="btn danger" onClick={() => deleteSelectedTransition()}>
+              Remove transition
+            </button>
+          </div>
+        )}
+        {!primary && !trInfo && (
           <div className="insp">
             <div className="section-title">Sequence</div>
             <dl className="kv">
@@ -116,6 +156,21 @@ export function Inspector() {
                 </button>
               )}
             </div>
+            <div className="section-title">Fades</div>
+            {(['fadeIn', 'fadeOut'] as const).map((k) => (
+              <Slider
+                key={k}
+                label={k === 'fadeIn' ? 'Fade in' : 'Fade out'}
+                testid={`insp-${k}`}
+                value={primary.clip[k]}
+                min={0}
+                max={Math.min(primary.clip.duration, Math.round(fps * 5))}
+                step={1}
+                fmt={(v) => `${(v / fps).toFixed(2)}s`}
+                onPreview={(v) => previewEdit((s) => setClipFades(s, primary.clip.id, { [k]: v }))}
+                onCommit={(v) => (clearPreview(), edit(k === 'fadeIn' ? 'Fade in' : 'Fade out', (s) => setClipFades(s, primary.clip.id, { [k]: v })))}
+              />
+            ))}
             {video && (
               <>
                 <div className="section-title">Transform</div>

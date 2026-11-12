@@ -116,8 +116,10 @@ export function clearRange(seq: Sequence, track: Track, start: number, end: numb
         duration: ce - end,
         sourceIn: clip.sourceIn + secs(seq, end - cs) * clip.speed,
         linkId: remapLink(c, clip.linkId, end),
+        fadeIn: 0,
       };
       clip.duration = start - cs;
+      clip.fadeOut = 0;
       result.push(clip, right);
     } else if (cs < start) {
       clip.duration = start - cs;
@@ -182,6 +184,8 @@ export function placeMedia(seq: Sequence, asset: MediaAsset, opts: PlaceOptions)
     speed: 1,
     enabled: true,
     gainDb: 0,
+    fadeIn: 0,
+    fadeOut: 0,
     linkId,
   };
   const ids: string[] = [];
@@ -222,8 +226,12 @@ function splitSingle(seq: Sequence, track: Track, clip: Clip, frame: number, c: 
     duration: clip.duration - offset,
     sourceIn: clip.sourceIn + secs(seq, offset) * clip.speed,
     linkId: remapLink(c, clip.linkId, frame),
+    fadeIn: 0,
   };
   clip.duration = offset;
+  clip.fadeOut = 0;
+  // a transition on the clip's right cut now belongs to the new right half
+  for (const tr of track.transitions) if (tr.leftClipId === clip.id) tr.leftClipId = right.id;
   track.clips.push(right);
   sortTrack(track);
   return right;
@@ -451,7 +459,7 @@ export function slideClip(seq: Sequence, media: MediaMap, clipId: string, delta:
   return d;
 }
 
-export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform'>>) {
+export function setClipProps(seq: Sequence, clipId: string, props: Partial<Pick<Clip, 'enabled' | 'gainDb' | 'name' | 'transform' | 'fadeIn' | 'fadeOut'>>) {
   const f = findClip(seq, clipId);
   if (!f) throw new EditError('Clip not found');
   assertUnlocked(f.track);
@@ -473,7 +481,7 @@ export function setTrackProps(seq: Sequence, trackId: string, props: Partial<Pic
 
 export function addTrack(seq: Sequence, kind: 'video' | 'audio') {
   const count = seq.tracks.filter((t) => t.kind === kind).length;
-  const t: Track = { id: newId(), kind, name: `${kind === 'video' ? 'V' : 'A'}${count + 1}`, locked: false, disabled: false, clips: [] };
+  const t: Track = { id: newId(), kind, name: `${kind === 'video' ? 'V' : 'A'}${count + 1}`, locked: false, disabled: false, clips: [], transitions: [] };
   // keep video tracks before audio tracks
   if (kind === 'video') {
     const lastVideo = seq.tracks.map((x) => x.kind).lastIndexOf('video');

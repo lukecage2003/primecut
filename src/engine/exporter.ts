@@ -12,13 +12,14 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
-  type Clip,
   type ExportSettings,
+  type PlanItem,
   type MediaAsset,
   type Project,
   type Sequence,
   framesToSeconds,
   rateToNumber,
+  planSequence,
   sequenceDuration,
 } from '../core';
 import { CancelledError, ffmpeg, ffprobe } from './ffmpeg';
@@ -82,71 +83,80 @@ export function buildExportPlan(project: Project, seq: Sequence, output: string,
   let last = 'base0';
   let ov = 0;
 
-  type Placed = { clip: Clip; m: MediaAsset; start: number; frames: number; srcIn: number };
-  const visible = (clip: Clip): Placed | null => {
-    const m = project.media[clip.mediaId];
-    if (!m || !clip.enabled) return null;
-    const s0 = Math.max(clip.start, range.start);
-    const e0 = Math.min(clip.start + clip.duration, range.end);
+  // Visible part of a plan item inside the export range (frames relative to range start).
+  const visible = (it: PlanItem) => {
+    const s0 = Math.max(it.start, range.start);
+    const e0 = Math.min(it.end, range.end);
     if (e0 <= s0) return null;
-    return { clip, m, start: s0 - range.start, frames: e0 - s0, srcIn: clip.sourceIn + framesToSeconds(s0 - clip.start, r) * clip.speed };
+    const srcIn = it.sourceIn + framesToSeconds(s0 - it.start, r) * it.clip.speed;
+    // Ramps are expressed relative to the visible window (clamped at range boundaries).
+    const fin = Math.max(0, it.rampIn - (s0 - it.start));
+    const fout = Math.max(0, it.rampOut - (it.end - e0));
+    return { start: s0 - range.start, frames: e0 - s0, srcIn, fin: Math.min(fin, e0 - s0), fout: Math.min(fout, e0 - s0) };
   };
 
-  const videoTracks = seq.tracks.filter((t) => t.kind === 'video' && !t.disabled);
-  for (const t of videoTracks) {
-    for (const clip of t.clips) {
-      const p = visible(clip);
-      if (!p || !p.m.probe.video) continue;
-      const clipSec = framesToSeconds(p.frames, r);
-      if (p.m.kind === 'image') {
-        inputs.push('-loop', '1', '-framerate', rateStr, '-t', f6(clipSec + 1), '-i', p.m.path);
-      } else {
-        // +1s of slack so fps/trim always have enough frames to cut the exact count.
-        inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 1), '-i', p.m.path);
-      }
-      const idx = nIn++;
-      const { w, h } = displaySize(p.m);
-      const tr = clip.transform;
-      const fit = Math.min(W / w, H / h) * tr.scale;
-      const ow = even(w * fit);
-      const oh = even(h * fit);
-      const x = Math.round((W - ow) / 2 + tr.x);
-      const y = Math.round((H - oh) / 2 + tr.y);
-      const chain = [`fps=${rateStr}`, 'setpts=PTS-STARTPTS', `trim=end_frame=${p.frames}`, 'setpts=PTS-STARTPTS', `scale=${ow}:${oh}:flags=lanczos`, 'setsar=1'];
-      if (tr.rotation % 360 !== 0) chain.push('format=yuva420p', `rotate=${f6((tr.rotation * Math.PI) / 180)}:ow=rotw(${f6((tr.rotation * Math.PI) / 180)}):oh=roth(${f6((tr.rotation * Math.PI) / 180)}):c=none`);
-      if (tr.opacity < 1) chain.push('format=yuva420p', `colorchannelmixer=aa=${Math.max(0, tr.opacity).toFixed(4)}`);
-      chain.push(`setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`);
-      filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
-      const next = `ov${ov++}`;
-      filters.push(`[${last}][v${idx}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto[${next}]`);
-      last = next;
+  const plan = planSequence(seq, project.media);
+  for (const it of plan.filter((x) => x.kind === 'video')) {
+    const p = visible(it);
+    if (!p) continue;
+    const clipSec = framesToSeconds(p.frames, r);
+    if (it.media.kind === 'image') {
+      inputs.push('-loop', '1', '-framerate', rateStr, '-t', f6(clipSec + 1), '-i', it.media.path);
+    } else {
+      // +1s of slack so fps/trim always have enough frames to cut the exact count.
+      inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 1), '-i', it.media.path);
     }
+    const idx = nIn++;
+    const { w, h } = displaySize(it.media);
+    const tr = it.clip.transform;
+    const fit = Math.min(W / w, H / h) * tr.scale;
+    const ow = even(w * fit);
+    const oh = even(h * fit);
+    const x = Math.round((W - ow) / 2 + tr.x);
+    const y = Math.round((H - oh) / 2 + tr.y);
+    const chain = [`fps=${rateStr}`, 'setpts=PTS-STARTPTS', `trim=end_frame=${p.frames}`, 'setpts=PTS-STARTPTS', `scale=${ow}:${oh}:flags=lanczos`, 'setsar=1'];
+    const needsAlpha = tr.rotation % 360 !== 0 || tr.opacity < 1 || p.fin > 0 || p.fout > 0;
+    if (needsAlpha) chain.push('format=yuva420p');
+    if (tr.rotation % 360 !== 0) {
+      const a = f6((tr.rotation * Math.PI) / 180);
+      chain.push(`rotate=${a}:ow=rotw(${a}):oh=roth(${a}):c=none`);
+    }
+    if (tr.opacity < 1) chain.push(`colorchannelmixer=aa=${Math.max(0, tr.opacity).toFixed(4)}`);
+    if (p.fin > 0) chain.push(`fade=t=in:s=0:n=${p.fin}:alpha=1`);
+    if (p.fout > 0) chain.push(`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`);
+    chain.push(`setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`);
+    filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
+    const next = `ov${ov++}`;
+    filters.push(`[${last}][v${idx}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto[${next}]`);
+    last = next;
   }
   filters.push(`[${last}]format=yuv420p,trim=end_frame=${frames}[vout]`);
 
   // Audio
   const audioLabels: string[] = [];
-  const audioTracks = seq.tracks.filter((t) => t.kind === 'audio' && !t.disabled);
-  for (const t of audioTracks) {
-    for (const clip of t.clips) {
-      const p = visible(clip);
-      if (!p || !p.m.probe.audio) continue;
-      const clipSec = framesToSeconds(p.frames, r);
-      inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 0.5), '-i', p.m.path);
-      const idx = nIn++;
-      const delaySamples = Math.round(framesToSeconds(p.start, r) * SR);
-      const samples = Math.round(clipSec * SR);
-      const chain = [
-        `aresample=${SR}`,
-        'aformat=sample_fmts=fltp:channel_layouts=stereo',
-        'asetpts=PTS-STARTPTS',
-        `atrim=end_sample=${samples}`,
-        `volume=${clip.gainDb.toFixed(2)}dB`,
-        `adelay=delays=${delaySamples}S:all=1`,
-      ];
-      filters.push(`[${idx}:a]${chain.join(',')}[a${idx}]`);
-      audioLabels.push(`[a${idx}]`);
+  for (const it of plan.filter((x) => x.kind === 'audio')) {
+    const p = visible(it);
+    if (!p) continue;
+    const clipSec = framesToSeconds(p.frames, r);
+    inputs.push('-ss', f6(p.srcIn), '-t', f6(clipSec + 0.5), '-i', it.media.path);
+    const idx = nIn++;
+    const delaySamples = Math.round(framesToSeconds(p.start, r) * SR);
+    const samples = Math.round(clipSec * SR);
+    const chain = [
+      `aresample=${SR}`,
+      'aformat=sample_fmts=fltp:channel_layouts=stereo',
+      'asetpts=PTS-STARTPTS',
+      `atrim=end_sample=${samples}`,
+      `volume=${it.clip.gainDb.toFixed(2)}dB`,
+    ];
+    if (p.fin > 0) chain.push(`afade=t=in:ss=0:ns=${Math.round(framesToSeconds(p.fin, r) * SR)}`);
+    if (p.fout > 0) {
+      const ns = Math.round(framesToSeconds(p.fout, r) * SR);
+      chain.push(`afade=t=out:ss=${samples - ns}:ns=${ns}`);
     }
+    chain.push(`adelay=delays=${delaySamples}S:all=1`);
+    filters.push(`[${idx}:a]${chain.join(',')}[a${idx}]`);
+    audioLabels.push(`[a${idx}]`);
   }
   const totalSamples = Math.round(durSec * SR);
   filters.push(`anullsrc=r=${SR}:cl=stereo,atrim=end_sample=${totalSamples}[abase]`);

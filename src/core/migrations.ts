@@ -6,8 +6,24 @@ import { type Project, SCHEMA_VERSION } from './model';
 
 export type Migration = (doc: Record<string, unknown>) => Record<string, unknown>;
 
-/** Registry: key = version being migrated *from*. Empty while the format is at v1. */
-export const MIGRATIONS: Record<number, Migration> = {};
+type AnyRec = Record<string, unknown>;
+
+/** Registry: key = version being migrated *from*. */
+export const MIGRATIONS: Record<number, Migration> = {
+  /** v1 → v2: transitions per track, fade in/out per clip. */
+  1: (doc) => {
+    for (const seq of Object.values((doc.sequences ?? {}) as Record<string, AnyRec>)) {
+      for (const t of (seq.tracks ?? []) as AnyRec[]) {
+        t.transitions ??= [];
+        for (const c of (t.clips ?? []) as AnyRec[]) {
+          c.fadeIn ??= 0;
+          c.fadeOut ??= 0;
+        }
+      }
+    }
+    return doc;
+  },
+};
 
 export class MigrationError extends Error {}
 

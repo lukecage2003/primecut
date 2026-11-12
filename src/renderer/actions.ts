@@ -12,6 +12,9 @@ import {
   splitAt,
   deleteClips,
   type MediaMap,
+  normalizeSequence,
+  addTransitionsAt,
+  removeTransition,
 } from '../core';
 import type { OpenResult } from '../shared/api';
 import { api } from './api';
@@ -103,6 +106,7 @@ async function enterEditor(res: OpenResult, project: Project, recovered = false)
       peaks: {},
       proxies,
       selectedMedia: null,
+      selectedTransition: null,
       snapAt: null,
       savedAt: res.savedAt,
       version: 0,
@@ -277,7 +281,12 @@ export function removeMedia(mediaId: string) {
 export function edit<R>(label: string, fn: (seq: Draft<Sequence>, media: MediaMap, project: Draft<Project>) => R): R | undefined {
   const e = ed();
   try {
-    return e.history.commit(label, (d) => fn(d.sequences[d.activeSequenceId]!, d.media as MediaMap, d));
+    return e.history.commit(label, (d) => {
+      const seq = d.sequences[d.activeSequenceId]!;
+      const r = fn(seq, d.media as MediaMap, d);
+      normalizeSequence(seq, d.media as MediaMap);
+      return r;
+    });
   } catch (err) {
     if (err instanceof EditError) toast(err.message, 'error', undefined, 2500);
     else toast(errorText(err), 'error');
@@ -289,7 +298,10 @@ export function edit<R>(label: string, fn: (seq: Draft<Sequence>, media: MediaMa
 export function previewEdit(fn: (seq: Draft<Sequence>, media: MediaMap) => void) {
   const e = ed();
   try {
-    const next = produce(e.history.present, (d) => fn(d.sequences[d.activeSequenceId]!, d.media as MediaMap));
+    const next = produce(e.history.present, (d) => {
+      fn(d.sequences[d.activeSequenceId]!, d.media as MediaMap);
+      normalizeSequence(d.sequences[d.activeSequenceId]!, d.media as MediaMap);
+    });
     store.setEditor({ preview: next });
   } catch {
     /* illegal intermediate states are simply not previewed */
@@ -319,10 +331,29 @@ export function splitAtPlayhead() {
 }
 
 export function deleteSelection(ripple: boolean) {
+  if (deleteSelectedTransition()) return;
   const e = ed();
   if (!e.selection.length) return;
   edit(ripple ? 'Ripple delete' : 'Delete', (seq) => deleteClips(seq, e.selection, ripple));
   store.setEditor({ selection: [] });
+}
+
+/** Ctrl+D: default cross-dissolve (1 s) at the cut nearest the playhead on every unlocked track. */
+export function addDefaultTransition() {
+  const e = ed();
+  const seq = currentSequence(e);
+  const fps = seq.settings.frameRate.num / seq.settings.frameRate.den;
+  const ids = edit('Add cross-dissolve', (s, media) => addTransitionsAt(s, media, e.playhead, Math.round(fps), Math.max(2, Math.round(10 / e.zoom))));
+  if (ids?.length) store.setEditor({ selectedTransition: ids[0]!, selection: [] });
+}
+
+export function deleteSelectedTransition(): boolean {
+  const e = ed();
+  if (!e.selectedTransition) return false;
+  const id = e.selectedTransition;
+  edit('Remove transition', (s) => removeTransition(s, id));
+  store.setEditor({ selectedTransition: null });
+  return true;
 }
 
 export function undo() {
