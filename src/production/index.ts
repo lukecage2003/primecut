@@ -15,3 +15,4 @@ export * from './comicRefs';
 export * from './transcriptScript';
 export * from './narrationFormat';
 export * from './pauses';
+export * from './compare';

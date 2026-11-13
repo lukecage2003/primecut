@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { type Clip, DEFAULT_DUCK, DEFAULT_TRANSFORM, type Sequence, findClip, framesToTimecode, maxTransitionDuration, setClipFades, setClipProps, setTransitionDuration, unlinkClips } from '../../core';
 import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead, updateVisual } from '../actions';
 import { VISUAL_KINDS } from '../../core';
+import { compareVersions, versionMetrics } from '../../production/compare';
 import { store } from '../store';
 import { currentProject, currentSequence, useEditor } from '../store';
 
@@ -267,6 +268,7 @@ function ProductionReport() {
         <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Régénérer…</button>
         <button className="btn ghost" onClick={() => void learnFromEdits()} title="Adapter rythme, mouvements et transitions à vos retouches de cette version">Apprendre de mes retouches</button>
       </div>
+      <CompareVersions />
       {p.narrationFormat && (
         <div data-testid="narration-format">
           <div className="section-title">Type de narration</div>
@@ -305,6 +307,57 @@ function ProductionReport() {
           <div className="tiny">{s.reasons.join(' · ')}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Measured comparison of this version with another one of the same project (no artistic score). */
+function CompareVersions() {
+  const seq = useEditor((e) => currentSequence(e));
+  const project = useEditor((e) => currentProject(e));
+  const others = Object.values(project.sequences).filter((s) => s.id !== seq.id);
+  const [otherId, setOtherId] = useState('');
+  if (!others.length) return null;
+  const other = project.sequences[otherId];
+  const rows = other ? compareVersions(versionMetrics(other, project.media), versionMetrics(seq, project.media)) : [];
+  const color = { better: 'var(--ok, #6c6)', worse: 'var(--danger)', diff: 'inherit', same: 'var(--muted, #888)' } as const;
+  return (
+    <div data-testid="compare-versions">
+      <div className="section-title">Comparer les versions</div>
+      <select className="input" value={otherId} onChange={(e) => setOtherId(e.target.value)} data-testid="compare-select">
+        <option value="">Comparer avec…</option>
+        {others.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+      {other && (
+        <>
+          <table className="tiny" style={{ width: '100%', marginTop: 6, borderCollapse: 'collapse' }} data-testid="compare-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Mesure</th>
+                <th style={{ textAlign: 'right' }}>{other.name}</th>
+                <th style={{ textAlign: 'right' }}>{seq.name}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key}>
+                  <td>{r.label}</td>
+                  <td style={{ textAlign: 'right' }}>{r.a}</td>
+                  <td style={{ textAlign: 'right', color: color[r.verdict] }}>
+                    {r.b}
+                    {r.verdict === 'better' ? ' ▲' : r.verdict === 'worse' ? ' ▼' : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="tiny">Mesures calculées à l’identique sur les deux versions. ▲/▼ seulement quand le sens est un fait technique (moins de répétitions, moins d’erreurs) ; durée et nombre de plans restent un choix éditorial.</div>
+        </>
+      )}
     </div>
   );
 }

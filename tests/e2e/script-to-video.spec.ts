@@ -45,6 +45,10 @@ test('script + narration + folder → generated video', async () => {
   // the narration was cleaned into a derived copy; switching back to the original is one undoable edit
   await expect(page.getByTestId('voice-report')).toContainText('LUFS');
   if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('production-report').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06b-report-voice.png') });
+  // measured comparison with the project's other version
+  await page.getByTestId('compare-select').selectOption({ index: 1 });
+  await expect(page.getByTestId('compare-table')).toContainText('Même image deux fois de suite');
+  if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('compare-versions').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06e-comparaison-versions.png') });
   // the detected narration type and what it changed are explained in the report
   await expect(page.getByTestId('narration-format')).toContainText('Type de narration');
   if (process.env.PRIMESTONE_SHOTS) {

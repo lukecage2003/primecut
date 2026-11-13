@@ -340,7 +340,7 @@ export function createSequence(name: string, settings?: Partial<SequenceSettings
 }
 
 export function createProject(name: string, seqSettings?: Partial<SequenceSettings>): Project {
-  const seq = createSequence('Sequence 01', seqSettings);
+  const seq = createSequence('Séquence 01', seqSettings);
   const now = new Date().toISOString();
   return {
     schemaVersion: SCHEMA_VERSION,

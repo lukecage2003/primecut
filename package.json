@@ -108,7 +108,14 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036",
+      "multiLanguageInstaller": false,
+      "shortcutName": "Primestone Motion Studio",
+      "uninstallDisplayName": "Primestone Motion Studio ${version}"
     },
     "linux": {
       "target": [
