@@ -27,6 +27,7 @@ import { loadDictionary } from './scriptFile';
 import { analyzeAudio, analyzeNarration } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
 import { cleanVoice, renderTightened } from './voice';
+import { ARCHIVE_EXT, extractComicArchive } from './archive';
 import { planTighten, remapTime } from '../production/pauses';
 import { scriptFromTranscript } from '../production/transcriptScript';
 import { NARRATION_KINDS, type NarrationKind, detectNarrationFormat, directionFor, rankCard } from '../production/narrationFormat';
@@ -86,10 +87,27 @@ export async function scanMediaFolders(folders: string[], projectDir: string, kn
       const full = path.join(dir, e.name);
       if (e.isDirectory() && !e.name.startsWith('.')) await walk(full, depth + 1);
       else if (e.isFile() && MEDIA_EXT.has(path.extname(e.name).toLowerCase()) && !known.has(full)) files.push(full);
+      else if (e.isFile() && ARCHIVE_EXT.has(path.extname(e.name).toLowerCase())) archives.push(full);
     }
   }
+  const archives: string[] = [];
   for (const f of folders) await walk(f, 0);
   const out: ScanResult = { assets: [], errors: [] };
+  // comic archives (CBZ/ZIP): pages extracted into the project cache, in reading order
+  const pageOf = new Map<string, { title: string; n: number; archive: string }>();
+  for (const z of archives) {
+    if (signal?.aborted) break;
+    try {
+      const x = await extractComicArchive(z, path.join(projectDir, 'Cache'));
+      x.pages.forEach((pg, i) => {
+        if (known.has(pg) || files.length >= maxFiles) return;
+        files.push(pg);
+        pageOf.set(pg, { title: x.title, n: i + 1, archive: path.basename(z) });
+      });
+    } catch (e) {
+      out.errors.push({ path: z, error: (e as Error).message });
+    }
+  }
   for (const f of files) {
     if (signal?.aborted) break;
     try {
@@ -108,6 +126,11 @@ export async function scanMediaFolders(folders: string[], projectDir: string, kn
         } catch {
           /* invalid sidecar ignored */
         }
+      }
+      const page = pageOf.get(f);
+      if (page) {
+        tags.push(page.title, `page ${page.n}`);
+        rights = { ...rights!, note: `Page ${page.n} de l’archive ${page.archive} fournie par l’utilisateur (droits sous sa responsabilité).` };
       }
       a.tags = tags;
       a.rights = rights;

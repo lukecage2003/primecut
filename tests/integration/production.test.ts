@@ -263,3 +263,44 @@ describe('pause tightening', () => {
     res.timings!.forEach((t, i) => expect(Math.abs(t.start - remapTime(n.truth[i]!.start, plan.keep))).toBeLessThan(0.3));
   }, 120000);
 });
+
+describe('comic archives (CBZ)', () => {
+  it('extracts the pages in natural reading order, safely, and reads them like a folder of pages', async () => {
+    const { scanMediaFolders } = await import('../../src/engine/production');
+    const { execFileSync } = await import('node:child_process');
+    const d = tmpDir('ps-cbz-');
+    const work = path.join(d, 'work');
+    fs.mkdirSync(path.join(work, 'Batman 676 (2008)', '__MACOSX'), { recursive: true });
+    const pg = (file: string, fill: string) => ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1400x2000', '-vf', ['drawbox=x=20:y=20:w=660:h=960', 'drawbox=x=720:y=20:w=660:h=960', 'drawbox=x=20:y=1020:w=660:h=960', 'drawbox=x=720:y=1020:w=660:h=960'].map((b) => `${b}:c=${fill}:t=fill`).join(','), '-frames:v', '1', path.join(work, 'Batman 676 (2008)', file)]);
+    await pg('page10.jpg', 'blue');
+    await pg('page2.jpg', 'green');
+    await pg('page1.jpg', 'red');
+    fs.writeFileSync(path.join(work, 'Batman 676 (2008)', 'notes.txt'), 'pas une image');
+    fs.writeFileSync(path.join(work, 'Batman 676 (2008)', '__MACOSX', '._page1.jpg'), 'x');
+    const lib = path.join(d, 'lib');
+    fs.mkdirSync(lib);
+    const cbz = path.join(lib, 'Batman 676 (2008).cbz');
+    execFileSync('zip', ['-q', '-r', cbz, 'Batman 676 (2008)'], { cwd: work });
+    // a hostile entry name must never be written outside the cache
+    fs.mkdirSync(path.join(work, 'x', 'y'), { recursive: true });
+    fs.copyFileSync(path.join(work, 'Batman 676 (2008)', 'page1.jpg'), path.join(work, 'x', 'evil.jpg'));
+    execFileSync('zip', ['-q', cbz, '../evil.jpg'], { cwd: path.join(work, 'x', 'y') });
+    const before = fs.readFileSync(cbz);
+    const scan = await scanMediaFolders([lib], d, new Set());
+    expect(scan.errors).toEqual([]);
+    const pages = scan.assets.map((a) => a.name).sort();
+    expect(pages).toEqual(['Batman 676 (2008) p001.jpg', 'Batman 676 (2008) p002.jpg', 'Batman 676 (2008) p003.jpg']);
+    // natural order, byte-identical pages: page1 → p001, page2 → p002, page10 → p003
+    const src = (n: string) => fs.readFileSync(path.join(work, 'Batman 676 (2008)', n));
+    const out = (p: string) => fs.readFileSync(scan.assets.find((a) => a.name === `Batman 676 (2008) ${p}.jpg`)!.path);
+    expect([out('p001').equals(src('page1.jpg')), out('p002').equals(src('page2.jpg')), out('p003').equals(src('page10.jpg'))]).toEqual([true, true, true]);
+    expect(fs.existsSync(path.join(d, 'Cache', 'evil.jpg')) || fs.existsSync(path.join(d, 'evil.jpg'))).toBe(false);
+    const p1 = scan.assets.find((a) => a.name.endsWith('p002.jpg'))!;
+    expect(p1.comic).toBeTruthy();
+    expect(p1.comic?.format).toBe('planche');
+    expect(p1.tags).toEqual(expect.arrayContaining(['Batman 676 (2008)', 'page 2']));
+    expect(fs.readFileSync(cbz).equals(before)).toBe(true);
+    // second scan: served from the cache, same pages
+    expect((await scanMediaFolders([lib], d, new Set())).assets).toHaveLength(3);
+  }, 120000);
+});
