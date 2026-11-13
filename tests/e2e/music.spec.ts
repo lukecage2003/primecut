@@ -36,7 +36,14 @@ test('music library: analyse a folder, show tempo/energy/licence, correct a mood
   await expect(course).toContainText('rythme');
   await course.getByRole('button', { name: 'mystère' }).click();
   await expect(course.locator('.music-row')).toContainText('mystère');
-  if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '10-bibliotheque-musicale.png') });
+  if (process.env.PRIMESTONE_SHOTS) {
+    await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '10-bibliotheque-musicale.png') });
+    // same panel in the light theme (glass must read well in both)
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '10b-bibliotheque-musicale-clair.png') });
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  }
   // originals untouched, index outside the library
   expect(fs.readdirSync(lib).sort()).toEqual(['Course poursuite.mp3', 'Marche lente.wav', 'Nappe.flac']);
   expect(fs.existsSync(path.join(w.userData, 'music-index.json'))).toBe(true);
