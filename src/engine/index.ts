@@ -12,3 +12,5 @@ export * from './sfx';
 export * from './transcribe';
 export * from './scriptFile';
 export * from './models';
+export * from './deps';
+export * from './log';

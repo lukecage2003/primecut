@@ -6,7 +6,8 @@
  * cancellation via AbortSignal. A task is only marked `done` after its optional verify step passes.
  */
 import { EventEmitter } from 'node:events';
-import { CancelledError } from './ffmpeg';
+import { CancelledError, ProcessError } from './ffmpeg';
+import { log as writeLog } from './log';
 
 export type TaskState = 'queued' | 'running' | 'verifying' | 'done' | 'failed' | 'cancelled';
 export type TaskPriority = 'high' | 'normal' | 'low';
@@ -172,6 +173,7 @@ export class TaskOrchestrator extends EventEmitter {
     if (t.info.resources.gpu) this.gpuBusy = true;
     t.info.state = 'running';
     t.info.startedAt = Date.now();
+    writeLog('info', 'task', `début : ${t.info.label}`, { cpu }, t.info.id);
     this.changed(t.info);
     let lastEmit = 0;
     const ctx: TaskContext = {
@@ -186,6 +188,7 @@ export class TaskOrchestrator extends EventEmitter {
         }
       },
       log: (line) => {
+        writeLog('debug', 'task', line, undefined, t.info.id);
         t.info.log.push(line);
         if (t.info.log.length > 500) t.info.log.shift();
       },
@@ -224,6 +227,11 @@ export class TaskOrchestrator extends EventEmitter {
       t.info.error = error instanceof Error ? error.message : String(error);
       t.reject(error);
     }
+    const sec = t.info.startedAt ? +((t.info.endedAt! - t.info.startedAt) / 1000).toFixed(2) : 0;
+    if (state === 'failed') {
+      const pe = error instanceof ProcessError ? { code: error.code, stderr: error.stderr.slice(-2000) } : {};
+      writeLog('error', 'task', `échec : ${t.info.label} — ${t.info.error}`, { sec, ...pe, stack: error instanceof Error ? error.stack?.split('\n').slice(0, 6).join('\n') : undefined }, t.info.id);
+    } else writeLog(state === 'done' ? 'info' : 'warn', 'task', `${state === 'done' ? 'terminé' : 'annulé'} : ${t.info.label}`, { sec }, t.info.id);
     this.changed(t.info);
     queueMicrotask(() => this.pump());
   }

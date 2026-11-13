@@ -14,6 +14,10 @@ import {
   findRecovery,
   hardwareReport,
   diagnostics,
+  dependencyReport,
+  readLogs,
+  log,
+  logDir,
   importMediaFile,
   makePeaks,
   makeProxy,
@@ -245,10 +249,20 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const st = loadSettings();
     const report = await diagnostics([st.projectsDir, app.getPath('userData'), app.getPath('temp')].filter((p) => fs.existsSync(p)), `Primestone ${app.getVersion()}`, st.transcriber?.enabled ? () => checkTranscriber(st.transcriber) : undefined);
-    const r = await dialog.showSaveDialog(w, { title: 'Save diagnostics report', defaultPath: path.join(app.getPath('documents'), `primestone-diagnostics-${new Date().toISOString().slice(0, 10)}.json`), filters: [{ name: 'JSON', extensions: ['json'] }] });
+    report.dependencies = await dependencyReport(modelsDir());
+    report.recentProblems = readLogs(7, 'warn', 300);
+    const r = await dialog.showSaveDialog(w, { title: 'Enregistrer le rapport de diagnostic', defaultPath: path.join(app.getPath('documents'), `primestone-diagnostic-${new Date().toISOString().slice(0, 10)}.json`), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (r.canceled || !r.filePath) return null;
     await fsp.writeFile(r.filePath, JSON.stringify(report, null, 2));
+    log('info', 'app', 'rapport de diagnostic enregistré');
     return r.filePath;
+  });
+  ipcMain.handle('system:dependencies', () => dependencyReport(modelsDir()));
+  ipcMain.handle('system:recentProblems', () => readLogs(7, 'warn', 200));
+  ipcMain.handle('system:openLogs', () => (logDir() ? shell.openPath(logDir()) : ''));
+  // errors of the interface (window.onerror, unhandled promise rejections, React error boundary)
+  ipcMain.on('system:reportError', (_e, m: { message?: unknown; stack?: unknown; source?: unknown }) => {
+    log('error', 'ui', String(m?.message ?? 'erreur inconnue').slice(0, 500), { stack: String(m?.stack ?? '').slice(0, 2000), source: String(m?.source ?? '').slice(0, 200) });
   });
   ipcMain.handle('system:reveal', (_e, f: string) => shell.showItemInFolder(f));
 

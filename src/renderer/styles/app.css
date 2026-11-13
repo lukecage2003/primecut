@@ -268,3 +268,7 @@ textarea.script { flex: 1; min-height: 300px; height: 100%; padding: 12px; resiz
 .cap.lower-third { left: 5%; right: auto; text-align: left; background: rgba(16,16,16,.75); padding: .15em .5em; color: #ffc400; }
 .cap.lower-third .sub { display: block; color: #fff; font-size: 70%; font-weight: 400; }
 .cap.placeholder { top: 50%; transform: translateY(-50%); left: 15%; right: 15%; background: #303030; color: #d0d0d0; font-weight: 400; padding: .5em; }
+.deps { list-style: none; margin: 6px 0; padding: 0; font-size: 12px; }
+.deps li { padding: 3px 0; overflow-wrap: anywhere; }
+.deps li.ok::first-letter { color: var(--ok, #3fb950); }
+.deps li.bad { color: var(--danger, #f85149); }

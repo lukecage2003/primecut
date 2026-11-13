@@ -121,6 +121,10 @@ export interface DiagnosticsReport {
   /** Short, real measurements on this machine (seconds of work for a fixed amount of video). */
   benchmarks: { name: string; seconds: number; realtimeFactor: number; ok: boolean; detail?: string }[];
   transcriber?: { ok: boolean; detail: string };
+  /** State of each external component (found, version, problem). */
+  dependencies?: { name: string; ok: boolean; detail: string }[];
+  /** Warnings and errors of the last days from the technical log (home folder masked). */
+  recentProblems?: import('./log').LogEntry[];
 }
 
 async function storageInfo(p: string) {

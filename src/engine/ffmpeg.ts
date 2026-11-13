@@ -5,6 +5,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { log } from './log';
 
 export interface FfmpegPaths {
   ffmpeg: string;
@@ -89,6 +90,7 @@ export function run(bin: string, args: string[], opts: RunOptions = {}): Promise
     });
     child.on('error', (e) => {
       opts.signal?.removeEventListener('abort', onAbort);
+      log('error', 'ffmpeg', `impossible de lancer ${path.basename(bin)} : ${e.message}`, { bin });
       reject(new ProcessError(`Failed to start ${path.basename(bin)}: ${e.message}`, null, ''));
     });
     child.on('close', (code) => {
@@ -96,6 +98,7 @@ export function run(bin: string, args: string[], opts: RunOptions = {}): Promise
       if (opts.signal?.aborted) return reject(new CancelledError());
       if (code !== 0) {
         const tail = stderr.trim().split('\n').slice(-6).join('\n');
+        log('warn', 'ffmpeg', `${path.basename(bin)} a échoué (code ${code})`, { args: args.slice(0, 40).join(' ').slice(0, 1500), tail: tail.slice(-1500) });
         return reject(new ProcessError(`${path.basename(bin)} exited with code ${code}: ${tail}`, code, stderr));
       }
       resolve({ stdout: Buffer.concat(out), stderr });

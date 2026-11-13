@@ -85,6 +85,10 @@ const api: PrimestoneApi = {
   system: {
     hardware: () => invoke('system:hardware'),
     saveDiagnostics: () => invoke('system:saveDiagnostics'),
+    dependencies: () => invoke('system:dependencies'),
+    recentProblems: () => invoke('system:recentProblems'),
+    openLogs: () => invoke('system:openLogs'),
+    reportError: (e) => ipcRenderer.send('system:reportError', e),
     reveal: (f) => invoke('system:reveal', f),
   },
   window: {

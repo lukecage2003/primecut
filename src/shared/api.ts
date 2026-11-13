@@ -183,6 +183,12 @@ export interface PrimestoneApi {
     hardware(): Promise<HardwareReport>;
     /** Runs read-only diagnostics + short benchmarks and saves them as JSON where the user chooses. */
     saveDiagnostics(): Promise<string | null>;
+    /** State of FFmpeg, FFprobe, whisper.cpp and the transcription models. */
+    dependencies(): Promise<{ name: string; ok: boolean; detail: string }[]>;
+    /** Warnings and errors of the technical log (last 7 days). */
+    recentProblems(): Promise<{ t: string; level: string; cat: string; msg: string; corr?: string }[]>;
+    openLogs(): Promise<string>;
+    reportError(e: { message: string; stack?: string; source?: string }): void;
     reveal(file: string): Promise<void>;
   };
   window: {

@@ -59,9 +59,10 @@ export function SettingsPanel() {
             <dt>Encodeurs matériels</dt>
             <dd>{hw.hwEncoders.length ? hw.hwEncoders.join(', ') : 'Aucun vérifié (encodage processeur)'}</dd>
             <dt>FFmpeg</dt>
-            <dd title={hw.ffmpeg.path}>{hw.ffmpeg.version ?? 'NOT FOUND'} ({hw.ffmpeg.source})</dd>
+            <dd title={hw.ffmpeg.path}>{hw.ffmpeg.version ?? 'INTROUVABLE'} ({hw.ffmpeg.source})</dd>
           </dl>
         )}
+        <DependencyPanel />
         <div className="actions">
           <button
             className="btn"
@@ -71,7 +72,7 @@ export function SettingsPanel() {
               setErr('');
               try {
                 const f = await api.system.saveDiagnostics();
-                if (f) setErr(`Diagnostics saved: ${f}`);
+                if (f) setErr(`Rapport enregistré : ${f}`);
               } catch (e) {
                 setErr(String(e));
               }
@@ -268,5 +269,37 @@ function ModelManager() {
         Rien n’est téléchargé sans votre accord. Une fois le modèle installé, tout fonctionne hors ligne et le son ne quitte jamais cet ordinateur. Dossier : {info.dir}
       </div>
     </div>
+  );
+}
+
+/** Failing dependencies and recent problems from the technical log (read-only). */
+function DependencyPanel() {
+  const [deps, setDeps] = useState<{ name: string; ok: boolean; detail: string }[] | null>(null);
+  const [probs, setProbs] = useState<{ t: string; level: string; cat: string; msg: string }[]>([]);
+  useEffect(() => {
+    void api.system.dependencies().then(setDeps).catch(() => setDeps([]));
+    void api.system.recentProblems().then(setProbs).catch(() => setProbs([]));
+  }, []);
+  return (
+    <section data-testid="dependencies">
+      <div className="section-title">Dépendances et journal</div>
+      {!deps ? (
+        <p className="muted">Vérification…</p>
+      ) : (
+        <ul className="deps">
+          {deps.map((d) => (
+            <li key={d.name} className={d.ok ? 'ok' : 'bad'}>
+              {d.ok ? '✓' : '✗'} <b>{d.name}</b> — {d.detail}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted">
+        {probs.length ? `${probs.length} avertissement(s) ou erreur(s) sur 7 jours, dernier : ${probs[probs.length - 1]!.msg}` : 'Aucune erreur enregistrée sur 7 jours.'}{' '}
+        <button className="btn small" data-testid="open-logs" onClick={() => void api.system.openLogs()}>
+          Ouvrir le dossier des journaux
+        </button>
+      </p>
+    </section>
   );
 }

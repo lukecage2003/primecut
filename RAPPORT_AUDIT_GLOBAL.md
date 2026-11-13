@@ -123,7 +123,7 @@ Compagnon : [`docs/BENCHMARK_OPEN_SOURCE.md`](docs/BENCHMARK_OPEN_SOURCE.md),
 | Sécurité processus | ✅ | aucun shell : tous les processus en tableau d'arguments | — |
 | Protocole média | ✅ **(corrigé)** | servait n'importe quel fichier du disque → limité aux médias | — |
 | Reproductibilité FFmpeg | 🟠 | build « latest » de la série 8.1 | P0-3 : épingler un build daté |
-| Journalisation structurée | 🟠 | journaux de tâches, pas de fichier de journal | P1 |
+| Journalisation structurée | ✅ **(nouveau)** | `engine/log.ts` : JSON par ligne, catégories, niveaux, rotation (5 Mo, 14 jours), corrélation par tâche, dossier personnel masqué ; erreurs FFmpeg, processus principal et interface ; dépendances défaillantes et problèmes récents dans Réglages et dans le rapport de diagnostic | — |
 
 ## Phase 3 — Architecture
 
@@ -175,7 +175,7 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
 | **P1-4** ✅ | Doublons d'images (empreinte perceptuelle) | `engine/media.ts`, planner | doublon jamais montré deux fois comme deux images | intégration | faux positifs |
 | **P1-5** | Musique par section depuis une bibliothèque locale | `production/music.ts` | choix expliqué, transitions aux changements de section | intégration | licence des musiques (droits) |
 | **P1-6** | Respirations/hésitations (VAD) | whisper.cpp `--vad` | pauses classées, « euh » repérés | réel en CI | modèle VAD (consentement) |
-| **P1-7** | Journal structuré (fichier) | `main/` | journal JSON par session, sans données personnelles | unitaire | — |
+| **P1-7** ✅ | Journal structuré (fichier) | `engine/log.ts`, `engine/deps.ts`, `main/`, Réglages | journal JSON, sans dossier personnel, rotation | 4 unitaires + E2E (dépendances listées) | — |
 | P2 | Bulles/OCR (ONNX + Tesseract), recherche sémantique d'images, keyframes, éditeur de script, export par lot, catalogue i18n, Thumbnail Studio, recherche en ligne avec consentement | — | — | — | poids des modèles (4 Go VRAM) |
 | P3 | Commandes vocales, traduction/effacement des bulles, masques/tracking, export OTIO, aperçu P-CORE temps réel | — | — | — | — |
 
@@ -201,6 +201,12 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
   test prouve que la chaîne fonctionne (programme, modèle, horodatage, alignement), **pas la
   précision** ; sur votre vraie voix, le modèle `small` (via faster-whisper) donnait une
   transcription fidèle (confiance moyenne 0,91).
+
+### CI après le run 31
+- Runs 33 à 35 : **rouges sous Windows** — le test d'intégration CBZ appelait l'outil `zip`, absent
+  des machines Windows de GitHub (`spawnSync zip ENOENT`). Corrigé au commit 45335c0 : le test
+  construit lui-même l'archive (écrivain ZIP de test) et vérifie en plus deux noms d'entrée hostiles.
+  Aucun code de l'application n'était en cause.
 
 ### Sécurité des dépendances
 - `npm audit --omit=dev` : **0 vulnérabilité** dans ce qui est livré.

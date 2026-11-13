@@ -6,6 +6,7 @@ import { registerIpc } from './ipc';
 import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
 import { loadSettings } from './settings';
+import { configureLog, log } from '../engine/log';
 import { registerPCoreIpc, renderPCore } from './pcoreRender';
 import { pcoreFrames } from '../engine/pcore';
 import { DEFAULT_PCORE_SETTINGS } from '../pcore/expression';
@@ -55,7 +56,12 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
+process.on('uncaughtException', (e) => log('error', 'app', `exception non interceptée : ${e.message}`, { stack: e.stack?.slice(0, 2000) }));
+process.on('unhandledRejection', (e) => log('error', 'app', `promesse rejetée non gérée : ${e instanceof Error ? e.message : String(e)}`, { stack: e instanceof Error ? e.stack?.slice(0, 2000) : undefined }));
+
 app.whenReady().then(() => {
+  configureLog({ dir: path.join(app.getPath('userData'), 'logs'), minLevel: process.env.PRIMESTONE_LOG_LEVEL === 'debug' ? 'debug' : 'info' });
+  log('info', 'app', `démarrage Primestone ${app.getVersion()}`, { platform: process.platform, arch: process.arch, electron: process.versions.electron });
   const bundled = app.isPackaged ? path.join(process.resourcesPath, 'ffmpeg') : path.join(app.getAppPath(), 'vendor', 'ffmpeg');
   setFfmpegPaths(resolveFfmpeg(bundled));
   // whisper.cpp shipped with the app (built-in transcription, no Python)

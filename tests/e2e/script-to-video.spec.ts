@@ -56,6 +56,9 @@ test('script + narration + folder → generated video', async () => {
     await page.getByTestId('open-settings').click();
     await expect(page.getByTestId('model-manager')).toBeVisible();
     await expect(page.getByTestId('model-download-whisper-small')).toContainText('466 Mo');
+    // technical log: dependency states are listed (FFmpeg found in this environment)
+    await expect(page.getByTestId('dependencies')).toContainText('FFmpeg');
+    await expect(page.getByTestId('dependencies').locator('li.ok').first()).toContainText('FFmpeg');
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '09-reglages.png') });
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();
