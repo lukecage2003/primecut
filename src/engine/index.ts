@@ -11,3 +11,4 @@ export * from './generators';
 export * from './sfx';
 export * from './transcribe';
 export * from './scriptFile';
+export * from './models';

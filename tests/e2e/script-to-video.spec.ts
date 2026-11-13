@@ -50,6 +50,8 @@ test('script + narration + folder → generated video', async () => {
   if (process.env.PRIMESTONE_SHOTS) {
     await page.getByTestId('narration-format').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06d-type-narration.png') });
     await page.getByTestId('open-settings').click();
+    await expect(page.getByTestId('model-manager')).toBeVisible();
+    await expect(page.getByTestId('model-download-whisper-small')).toContainText('466 Mo');
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '09-reglages.png') });
     await page.getByRole('button', { name: 'Terminé', exact: true }).click();

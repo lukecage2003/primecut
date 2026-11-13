@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { EngineCheck, HardwareReport, TranscriberConfig } from '../../shared/api';
 import { api } from '../api';
-import { updateSettings } from '../actions';
-import { store, useStore } from '../store';
+import { errorText, updateSettings } from '../actions';
+import { ask, store, toast, useStore } from '../store';
+import type { ModelEntry, ModelStatus } from '../../engine/models';
 
 export function SettingsPanel() {
   const settings = useStore((s) => s.settings);
@@ -50,9 +51,9 @@ export function SettingsPanel() {
             <dt>Système</dt>
             <dd>{hw.platform} · {hw.arch}</dd>
             <dt>Processeur</dt>
-            <dd>{hw.cpuModel} · {hw.cpuThreads} threads</dd>
+            <dd>{hw.cpuModel} · {hw.cpuThreads} cœurs logiques</dd>
             <dt>Mémoire</dt>
-            <dd>{(hw.totalMemMB / 1024).toFixed(1)} GB ({(hw.freeMemMB / 1024).toFixed(1)} GB free)</dd>
+            <dd>{(hw.totalMemMB / 1024).toFixed(1)} Go ({(hw.freeMemMB / 1024).toFixed(1)} Go libres)</dd>
             <dt>Carte graphique</dt>
             <dd>{hw.gpus.length ? hw.gpus.map((g) => `${g.name}${g.vramMB ? ` (${g.vramMB} MB)` : ''}`).join(', ') : 'Aucune détectée'}</dd>
             <dt>Encodeurs matériels</dt>
@@ -106,7 +107,10 @@ function TranscriberSettings() {
   };
   return (
     <>
-      <div className="section-title">Transcription locale (synchro mot à mot)</div>
+      <div className="section-title">Transcription locale (synchro mot à mot, mode sans script)</div>
+      <ModelManager />
+      <details>
+        <summary className="tiny">Réglages avancés (autre moteur, modèle personnalisé)</summary>
       <div className="row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }} data-testid="transcriber-settings">
         <label className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} data-testid="transcriber-enabled" />
@@ -149,10 +153,120 @@ function TranscriberSettings() {
         </button>
         {check && <span style={{ color: check.ok ? 'var(--ok, #6c6)' : 'var(--danger)' }}>{check.detail}</span>}
       </div>
-      <div className="tiny">
-        Fonctionne entièrement hors ligne une fois configuré. Primestone ne télécharge aucun modèle : procurez-vous un modèle Whisper (licence MIT, par ex. « small »
-        ≈ 0,5 Go, « medium » ≈ 1,5 Go) et sélectionnez-le ici. Le son ne quitte jamais cet ordinateur. Sans transcription, la synchro se fait phrase par phrase à partir des pauses.
-      </div>
+      </details>
     </>
+  );
+}
+
+const size = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1).replace('.', ',')} Go` : `${Math.round(b / (1 << 20))} Mo`);
+
+/**
+ * Built-in transcription: the whisper.cpp engine ships with Primestone; a model is downloaded only when
+ * the user asks for it (size, source and licence confirmed first), then checked (SHA-1) before use.
+ */
+function ModelManager() {
+  const settings = useStore((s) => s.settings)!;
+  const tasks = useStore((s) => s.tasks);
+  const [info, setInfo] = useState<{ catalog: ModelEntry[]; status: ModelStatus[]; dir: string; bundledEngine: boolean } | null>(null);
+  const [taskOf, setTaskOf] = useState<Record<string, string>>({});
+  // the main process records the model in the settings: reload both
+  const refresh = () => void Promise.all([api.models.list().then(setInfo), api.settings.get().then((st) => store.set({ settings: st }))]);
+  useEffect(refresh, []);
+  // refresh when a download task ends
+  const finished = Object.values(taskOf).map((id) => tasks[id]?.state).join(',');
+  useEffect(() => {
+    if (/done|failed|cancelled/.test(finished)) refresh();
+  }, [finished]);
+  if (!info) return <div className="tiny">Chargement…</div>;
+  const current = settings.transcriber.backend === 'whisper.cpp' ? settings.transcriber.modelPath : undefined;
+  return (
+    <div data-testid="model-manager">
+      <div className="tiny" style={{ marginBottom: 6 }}>
+        {info.bundledEngine
+          ? 'Moteur intégré : whisper.cpp (licence MIT), inclus dans Primestone — rien à installer. Choisissez un modèle de reconnaissance :'
+          : 'Moteur whisper.cpp introuvable dans cette installation : réinstallez Primestone ou utilisez les réglages avancés.'}
+      </div>
+      {info.catalog.map((m) => {
+        const st = info.status.find((x) => x.id === m.id)!;
+        const t = taskOf[m.id] ? tasks[taskOf[m.id]!] : undefined;
+        const running = t && (t.state === 'running' || t.state === 'queued');
+        const inUse = !!current && st.verified && current === st.path;
+        return (
+          <div key={m.id} className="row" style={{ gap: 10, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--line, #222)' }} data-testid={`model-${m.id}`}>
+            <div style={{ flex: 1 }}>
+              <b>{m.label}</b> <span className="tiny">· {size(m.sizeBytes)}</span>
+              <div className="tiny">{m.note}</div>
+              {running && (
+                <div className="progress" style={{ marginTop: 4 }}>
+                  <div style={{ width: `${Math.round((t!.progress ?? 0) * 100)}%` }} />
+                </div>
+              )}
+              {running && <div className="tiny">{t!.message ?? 'Démarrage…'}</div>}
+              {t?.state === 'failed' && <div className="tiny" style={{ color: 'var(--danger)' }}>{t.error}</div>}
+            </div>
+            {st.verified ? (
+              <>
+                <span className="tiny" style={{ color: 'var(--ok, #6c6)' }}>{inUse ? '✓ utilisé' : '✓ installé et vérifié'}</span>
+                {!inUse && (
+                  <button className="btn ghost" onClick={async () => (await api.models.use(m.id), refresh())}>
+                    Utiliser
+                  </button>
+                )}
+                <button
+                  className="btn ghost"
+                  onClick={async () => {
+                    if ((await ask('Supprimer le modèle ?', `${m.label} (${size(m.sizeBytes)}) sera supprimé de cet ordinateur. Vous pourrez le retélécharger.`, [{ label: 'Annuler', value: 'no' }, { label: 'Supprimer', value: 'yes', kind: 'danger' }])) === 'yes') {
+                      await api.models.remove(m.id);
+                      refresh();
+                    }
+                  }}
+                >
+                  Supprimer
+                </button>
+              </>
+            ) : running ? (
+              <button className="btn ghost" onClick={() => void api.tasks.cancel(taskOf[m.id]!)}>
+                Mettre en pause
+              </button>
+            ) : (
+              <>
+                <button
+                  className="btn"
+                  data-testid={`model-download-${m.id}`}
+                  onClick={async () => {
+                    const ok = await ask(
+                      'Télécharger ce modèle ?',
+                      `${m.label} — ${size(m.sizeBytes)}${st.partialBytes ? ` (${size(st.partialBytes)} déjà reçus, le téléchargement reprendra)` : ''}.\n\nSource : ${m.source}\nLicence : ${m.license}\n\nLe fichier est vérifié (SHA-1) avant d’être utilisé. Vos fichiers audio ne sont jamais envoyés : seule cette requête de téléchargement passe par Internet.`,
+                      [{ label: 'Annuler', value: 'no' }, { label: `Télécharger ${size(m.sizeBytes)}`, value: 'yes', kind: 'primary' }],
+                    );
+                    if (ok !== 'yes') return;
+                    try {
+                      const { taskId } = await api.models.download(m.id);
+                      setTaskOf((x) => ({ ...x, [m.id]: taskId }));
+                    } catch (e) {
+                      toast(`Téléchargement impossible : ${errorText(e)}`, 'error');
+                    }
+                  }}
+                >
+                  {st.partialBytes ? 'Reprendre' : 'Télécharger'} ({size(m.sizeBytes)})
+                </button>
+                <button className="btn ghost" title="Vous avez déjà ce fichier (ggml) : il est vérifié puis copié" onClick={async () => {
+                  try {
+                    if (await api.models.importFile(m.id)) refresh();
+                  } catch (e) {
+                    toast(errorText(e), 'error');
+                  }
+                }}>
+                  J’ai déjà le fichier…
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+      <div className="tiny" style={{ marginTop: 6 }}>
+        Rien n’est téléchargé sans votre accord. Une fois le modèle installé, tout fonctionne hors ligne et le son ne quitte jamais cet ordinateur. Dossier : {info.dir}
+      </div>
+    </div>
   );
 }

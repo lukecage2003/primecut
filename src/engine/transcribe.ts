@@ -36,7 +36,17 @@ export interface TranscriberConfig {
   threads?: number;
 }
 
-export const DEFAULT_TRANSCRIBER: TranscriberConfig = { enabled: false, backend: 'faster-whisper', language: 'fr', device: 'auto' };
+export const DEFAULT_TRANSCRIBER: TranscriberConfig = { enabled: false, backend: 'whisper.cpp', language: 'fr', device: 'auto' };
+
+let bundledCli: string | null = null;
+/** whisper-cli shipped with the application (set by the host at start-up). */
+export function setBundledWhisperCli(p: string | null) {
+  bundledCli = p && fs.existsSync(p) ? p : null;
+}
+export function bundledWhisperCli() {
+  return bundledCli;
+}
+const whisperCli = (cfg: TranscriberConfig) => cfg.whisperCppPath || bundledCli;
 
 export interface TranscriptResult {
   engine: string;
@@ -69,8 +79,15 @@ function runProcess(cmd: string, args: string[], opts: { signal?: AbortSignal; o
       buf = lines.pop() ?? '';
       for (const l of lines) opts.onLine?.(l);
     });
+    let ebuf = '';
     p.stderr.on('data', (d: Buffer) => {
-      err += d.toString('utf8');
+      const s = d.toString('utf8');
+      err += s;
+      // whisper.cpp reports its progress on stderr
+      ebuf += s;
+      const lines = ebuf.split(/\r?\n/);
+      ebuf = lines.pop() ?? '';
+      for (const l of lines) opts.onLine?.(l);
       if (err.length > 200_000) err = err.slice(-100_000);
     });
     p.on('error', (e) => {
@@ -98,7 +115,7 @@ export function sidecarScript(): string {
 
 /** Read-only check that the configured engine and model are usable. Never installs anything. */
 export async function checkTranscriber(cfg: TranscriberConfig): Promise<EngineCheck> {
-  if (!cfg.modelPath || !fs.existsSync(cfg.modelPath)) return { ok: false, detail: 'No model selected (or the path does not exist).' };
+  if (!cfg.modelPath || !fs.existsSync(cfg.modelPath)) return { ok: false, detail: 'Aucun modèle choisi (ou fichier introuvable).' };
   try {
     if (cfg.backend === 'faster-whisper') {
       if (!fs.existsSync(path.join(cfg.modelPath, 'model.bin'))) return { ok: false, detail: 'The model folder must contain a CTranslate2 model.bin (faster-whisper format).' };
@@ -108,11 +125,12 @@ export async function checkTranscriber(cfg: TranscriberConfig): Promise<EngineCh
       const [ver, cuda] = r.out.trim().split(/\s+/);
       return { ok: true, detail: `faster-whisper ${ver} · CUDA devices: ${cuda ?? '0'}` };
     }
-    if (!cfg.whisperCppPath || !fs.existsSync(cfg.whisperCppPath)) return { ok: false, detail: 'Select the whisper.cpp executable (whisper-cli).' };
-    const r = await runProcess(cfg.whisperCppPath, ['--help'], { timeoutMs: 15000 });
+    const cli = whisperCli(cfg);
+    if (!cli || !fs.existsSync(cli)) return { ok: false, detail: 'Moteur whisper.cpp introuvable (réinstallez Primestone ou indiquez whisper-cli).' };
+    const r = await runProcess(cli, ['--help'], { timeoutMs: 15000 });
     const txt = r.out + r.err;
-    if (!/--output-json|-oj/.test(txt)) return { ok: false, detail: 'This executable does not look like whisper.cpp (no JSON output option).' };
-    return { ok: true, detail: `whisper.cpp ready${/cuda|cublas/i.test(txt) ? ' (GPU build)' : ''}` };
+    if (!/--output-json|-oj/.test(txt)) return { ok: false, detail: 'Ce programme ne ressemble pas à whisper.cpp (pas de sortie JSON).' };
+    return { ok: true, detail: `whisper.cpp prêt${cli === bundledCli ? ' (intégré)' : ''}${/cuda|cublas/i.test(txt) ? ' · carte graphique' : ' · processeur'}` };
   } catch (e) {
     return { ok: false, detail: (e as Error).message };
   }
@@ -142,7 +160,7 @@ export async function transcribe(
   cacheDir: string,
   opts: { signal?: AbortSignal; progress?: (f: number) => void; prompt?: string; fingerprint?: string } = {},
 ): Promise<TranscriptResult> {
-  if (!cfg.modelPath) throw new Error('No transcription model configured');
+  if (!cfg.modelPath) throw new Error('aucun modèle de transcription choisi');
   const t0 = Date.now();
   const key = crypto
     .createHash('sha256')
@@ -175,23 +193,24 @@ export async function transcribe(
       words = j.words;
       engine = `faster-whisper (${j.model})`;
     } else {
-      if (!cfg.whisperCppPath) throw new Error('whisper.cpp executable not configured');
+      const cli = whisperCli(cfg);
+      if (!cli) throw new Error('Moteur whisper.cpp introuvable');
       const base = raw.replace(/\.json$/, '');
       const args = ['-m', cfg.modelPath, '-f', wav, '-l', cfg.language, '-ml', '1', '-sow', '-oj', '-of', base, '-pp'];
       if (cfg.threads) args.push('-t', String(cfg.threads));
       if (opts.prompt) args.push('--prompt', opts.prompt);
-      const r = await runProcess(cfg.whisperCppPath, args, {
+      const r = await runProcess(cli, args, {
         signal: opts.signal,
         onLine: (l) => {
           const m = /progress\s*=\s*(\d+)%/.exec(l);
           if (m) opts.progress?.(Number(m[1]) / 100);
         },
       });
-      if (r.code !== 0) throw new Error(`whisper.cpp failed: ${r.err.trim().split('\n').slice(-3).join(' ')}`);
+      if (r.code !== 0) throw new Error(`échec de whisper.cpp : ${r.err.trim().split('\n').slice(-3).join(' ')}`);
       words = parseWhisperCppJson(JSON.parse(await fsp.readFile(`${base}.json`, 'utf8')));
       engine = `whisper.cpp (${path.basename(cfg.modelPath)})`;
     }
-    if (!words.length) throw new Error('The recogniser returned no words');
+    if (!words.length) throw new Error('la reconnaissance n’a renvoyé aucun mot');
     const result = { engine, model: path.basename(cfg.modelPath), language: cfg.language, words };
     await fsp.writeFile(out, JSON.stringify(result));
     return { ...result, cached: false, seconds: (Date.now() - t0) / 1000 };

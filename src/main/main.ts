@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { BrowserWindow, Menu, app, nativeTheme } from 'electron';
 import { resolveFfmpeg, setFfmpegPaths } from '../engine/ffmpeg';
+import { bundledWhisperCli, setBundledWhisperCli } from '../engine/transcribe';
 import { registerIpc } from './ipc';
 import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
@@ -57,6 +58,9 @@ function createWindow() {
 app.whenReady().then(() => {
   const bundled = app.isPackaged ? path.join(process.resourcesPath, 'ffmpeg') : path.join(app.getAppPath(), 'vendor', 'ffmpeg');
   setFfmpegPaths(resolveFfmpeg(bundled));
+  // whisper.cpp shipped with the app (built-in transcription, no Python)
+  const exe = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
+  setBundledWhisperCli(app.isPackaged ? path.join(process.resourcesPath, 'whisper', exe) : path.join(app.getAppPath(), 'vendor', 'whisper', exe));
   if (!process.env.PRIMESTONE_DEVTOOLS) Menu.setApplicationMenu(null);
   registerMediaProtocol();
   registerIpc(() => mainWindow, () => (closeAllowed = true));
@@ -114,6 +118,13 @@ async function runSelfTest(outFile: string): Promise<number> {
   await check('pcore-assets', async () => {
     for (const f of ['pcore/logo-gold.webp', 'pcore/logo-shape.json']) await fs.access(asset(f));
     return 'logo + silhouette present';
+  });
+  await check('whisper-cpp', async () => {
+    const cli = bundledWhisperCli();
+    if (!cli) throw new Error('whisper-cli absent de l’installation');
+    const { execFile } = await import('node:child_process');
+    const out = await new Promise<string>((res, rej) => execFile(cli, ['--help'], { timeout: 20000, windowsHide: true }, (e, so, se) => (/--output-json/.test(so + se) ? res('whisper-cli runs') : rej(e ?? new Error('unexpected output')))));
+    return `${out} · ${cli}`;
   });
   await check('transcription-sidecar', async () => {
     await fs.access(asset('transcribe/faster_whisper_words.py'));

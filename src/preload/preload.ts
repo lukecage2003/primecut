@@ -20,6 +20,13 @@ const api: PrimestoneApi = {
     check: (cfg) => invoke('transcriber:check', cfg),
     pick: (kind) => invoke('transcriber:pick', kind),
   },
+  models: {
+    list: () => invoke('models:list'),
+    download: (id) => invoke('models:download', id),
+    importFile: (id) => invoke('models:import', id),
+    use: (id) => invoke('models:use', id),
+    remove: (id) => invoke('models:remove', id),
+  },
   settings: {
     get: () => invoke('settings:get'),
     set: (patch) => invoke('settings:set', patch),

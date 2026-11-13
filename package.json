@@ -2,7 +2,7 @@
   "name": "primestone-motion-studio",
   "productName": "Primestone Motion Studio",
   "version": "0.7.0",
-  "description": "Primestone Motion Studio \u2014 local-first professional video editor",
+  "description": "Primestone Motion Studio — local-first professional video editor",
   "license": "MIT",
   "private": true,
   "main": "dist/main/main.js",
@@ -45,7 +45,7 @@
   "build": {
     "appId": "com.primestone.motionstudio",
     "productName": "Primestone Motion Studio",
-    "copyright": "Copyright \u00a9 2026 Primestone",
+    "copyright": "Copyright © 2026 Primestone",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -59,6 +59,13 @@
       {
         "from": "vendor/ffmpeg",
         "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "vendor/whisper",
+        "to": "whisper",
         "filter": [
           "**/*"
         ]

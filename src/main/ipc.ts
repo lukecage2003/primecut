@@ -29,7 +29,8 @@ import {
   PROJECT_EXT,
 } from '../engine';
 import type { ExportOutcome, ExportRequest, ImportResult, OpenResult } from '../shared/api';
-import { checkTranscriber } from '../engine/transcribe';
+import { bundledWhisperCli, checkTranscriber } from '../engine/transcribe';
+import { MODEL_CATALOG, downloadModel, importModelFile, modelStatus, removeModel } from '../engine/models';
 import { forgetRecent, listRecent, loadSettings, pushRecent, saveSettings } from './settings';
 
 export const orchestrator = new TaskOrchestrator(2);
@@ -79,6 +80,45 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('settings:get', () => loadSettings());
   ipcMain.handle('settings:set', (_e, patch) => saveSettings(patch));
   ipcMain.handle('transcriber:check', (_e, cfg) => checkTranscriber(cfg));
+  // local AI models: listed with size/licence; downloaded only on an explicit request from the UI
+  const modelsDir = () => path.join(app.getPath('userData'), 'models');
+  ipcMain.handle('models:list', async () => ({ catalog: MODEL_CATALOG, status: await modelStatus(modelsDir()), dir: modelsDir(), bundledEngine: !!bundledWhisperCli() }));
+  const useModel = async (p: string) => {
+    const st = loadSettings();
+    await saveSettings({ transcriber: { ...st.transcriber, enabled: true, backend: 'whisper.cpp', modelPath: p } });
+  };
+  ipcMain.handle('models:download', (_e, id: string) => {
+    const m = MODEL_CATALOG.find((x) => x.id === id);
+    if (!m) throw new Error(`Modèle inconnu : ${id}`);
+    const { id: taskId } = orchestrator.submit({
+      type: 'download',
+      label: `Téléchargement · ${m.label}`,
+      priority: 'normal',
+      resources: { cpuSlots: 1 },
+      run: async (c) => {
+        const p = await downloadModel(modelsDir(), id, { signal: c.signal, onProgress: (d, t) => c.progress(t ? Math.min(0.99, d / t) : 0, `${(d / 1048576).toFixed(0)} / ${(t / 1048576).toFixed(0)} Mo`) });
+        c.progress(1, 'Vérifié (SHA-1)');
+        await useModel(p);
+        return { path: p };
+      },
+    });
+    return { taskId };
+  });
+  ipcMain.handle('models:import', async (e, id: string) => {
+    const w = BrowserWindow.fromWebContents(e.sender)!;
+    const r = await dialog.showOpenDialog(w, { title: 'Modèle ggml déjà téléchargé', properties: ['openFile'], filters: [{ name: 'Modèle ggml', extensions: ['bin'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const p = await importModelFile(modelsDir(), id, r.filePaths[0]);
+    await useModel(p);
+    return p;
+  });
+  ipcMain.handle('models:use', async (_e, id: string) => {
+    const s = (await modelStatus(modelsDir())).find((x) => x.id === id);
+    if (!s?.verified) throw new Error('Ce modèle n’est pas installé ou n’a pas été vérifié');
+    await useModel(s.path);
+    return s.path;
+  });
+  ipcMain.handle('models:remove', async (_e, id: string) => removeModel(modelsDir(), id));
   ipcMain.handle('transcriber:pick', async (e, kind: 'python' | 'whisper' | 'modelDir' | 'modelFile') => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const r =

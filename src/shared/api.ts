@@ -121,6 +121,14 @@ export interface PrimestoneApi {
     /** Native picker for the engine executable, a model folder or a model file. */
     pick(kind: 'python' | 'whisper' | 'modelDir' | 'modelFile'): Promise<string | null>;
   };
+  /** Local AI models: nothing is downloaded without an explicit request (size and licence shown first). */
+  models: {
+    list(): Promise<{ catalog: import('../engine/models').ModelEntry[]; status: import('../engine/models').ModelStatus[]; dir: string; bundledEngine: boolean }>;
+    download(id: string): Promise<{ taskId: string }>;
+    importFile(id: string): Promise<string | null>;
+    use(id: string): Promise<string>;
+    remove(id: string): Promise<void>;
+  };
   project: {
     create(dir: string, name: string, project: Project): Promise<OpenResult>;
     open(file: string): Promise<OpenResult>;

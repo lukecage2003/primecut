@@ -87,35 +87,28 @@ démarrage, auto-test, désinstallation) :
 - **Vos médias d'origine** (voix, images) ne sont **jamais modifiés ni déplacés**.
 - **Réglages du logiciel** : `C:\Users\<vous>\AppData\Roaming\Primestone Motion Studio\`.
 
-## 8. Transcription locale (facultative mais recommandée)
+## 8. Transcription locale (recommandée, sans Python)
 
-Sans transcription, Primestone synchronise le texte avec la voix en se basant sur les pauses :
-c'est utilisable, mais moins précis (≈ 3 s d'écart moyen mesuré). Avec la transcription locale,
-l'écart médian mesuré est de **58 ms**.
+La transcription sert à synchroniser le texte mot à mot (écart médian mesuré : **6 ms** sur un
+documentaire de 66 min) et à produire une vidéo **sans script**. Sans elle, la synchronisation se
+fait sur les pauses (≈ 3 s d'écart moyen).
 
-La transcription nécessite deux éléments que **vous installez vous-même, une seule fois** (aucun
-téléchargement automatique n'est fait par Primestone) :
+Le moteur (whisper.cpp, licence MIT) est **déjà inclus** dans Primestone. Il ne manque qu'un modèle de
+reconnaissance, que vous téléchargez une fois, depuis l'application :
 
-1. **Python** : téléchargez « Python 3.12 pour Windows » sur `https://www.python.org/downloads/`,
-   lancez l'installateur et **cochez « Add python.exe to PATH »** avant de cliquer sur
-   *Install Now*.
-2. **faster-whisper** : ouvrez le menu Démarrer, tapez `cmd`, ouvrez **Invite de commandes**, puis
-   copiez-collez cette ligne et appuyez sur Entrée :
+1. ⚙ **Réglages** → section **Transcription locale**.
+2. Choisissez un modèle : **Whisper small (recommandé)**, 466 Mo, convient aussi sans carte graphique.
+3. Cliquez sur **Télécharger (466 Mo)**. Une fenêtre indique la taille, la source et la licence :
+   confirmez. La progression s'affiche ; vous pouvez **mettre en pause** et reprendre plus tard.
+4. Le fichier est vérifié (empreinte SHA-1 officielle) puis activé automatiquement : la ligne
+   affiche **✓ utilisé**.
 
-   ```bat
-   python -m pip install faster-whisper
-   ```
+Vous avez déjà le fichier `ggml-small.bin` ? Cliquez sur **J’ai déjà le fichier…** : il est vérifié
+puis copié. Rien n'est jamais téléchargé sans votre accord, et le son ne quitte jamais votre
+ordinateur.
 
-   (C'est la seule étape qui utilise une fenêtre de commande.)
-3. **Un modèle Whisper** (licence MIT) : téléchargez le dossier du modèle *faster-whisper-small*
-   (≈ 0,5 Go, bon compromis) ou *faster-whisper-medium* (≈ 1,5 Go, plus précis, plus lent) et
-   placez-le par exemple dans `Documents\Primestone\modeles\`.
-4. Dans Primestone : **Réglages → Transcription locale** → cochez **Utiliser la transcription locale pour
-   Script → Vidéo**, choisissez le moteur **faster-whisper**, sélectionnez le dossier du modèle,
-   puis cliquez sur **Vérifier**. Un message vert confirme que tout fonctionne.
-
-Mesure réelle (processeur 4 cœurs, sans carte graphique, modèle *small*) : une narration de 6 min
-est transcrite en 2 min.
+*Réglages avancés* (facultatif) : un autre moteur (faster-whisper avec Python) ou un modèle
+personnalisé restent possibles.
 
 ## 9. Vérifier le moteur vidéo (FFmpeg)
 
@@ -148,7 +141,7 @@ Il n'y a pas encore de mise à jour automatique. Pour installer une nouvelle ver
 |---|---|
 | « Windows a protégé votre ordinateur » | **Informations complémentaires → Exécuter quand même** (§ 4). |
 | La synchronisation texte/voix est approximative | Installez la transcription locale (§ 8) puis relancez **Générer la vidéo**. |
-| **Vérifier** de la transcription affiche une erreur Python | Réinstallez Python en cochant **Add python.exe to PATH**, puis refaites l'étape 2 du § 8. |
+| Le téléchargement du modèle s'est arrêté | Cliquez sur **Reprendre** : il repart où il s'était arrêté. Un fichier incomplet ou modifié n'est jamais utilisé. |
 | L'export échoue sur un disque presque plein | Libérez de la place ou supprimez le dossier `Cache` d'un ancien projet. |
 | P-CORE n'apparaît pas dans la vidéo | Le rapport de génération indique pourquoi (ex. pilote graphique). Mettez à jour le pilote de la carte graphique. La vidéo est produite quand même. |
 | Un média est marqué **HORS LIGNE** | Le fichier a été déplacé ou renommé : cliquez sur **Localiser…** à côté du média et indiquez son nouvel emplacement. |
