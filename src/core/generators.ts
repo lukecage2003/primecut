@@ -24,13 +24,13 @@ export interface GeneratorSpec {
 }
 
 export const VISUAL_KINDS: { id: VisualKind; label: string }[] = [
-  { id: 'audio-hud', label: 'Holographic voice HUD' },
-  { id: 'data-matrix', label: 'Data matrix' },
-  { id: 'character-card', label: 'Character card' },
-  { id: 'cosmic', label: 'Cosmic' },
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'dramatic', label: 'Dramatic' },
-  { id: 'typography', label: 'Kinetic typography' },
+  { id: 'audio-hud', label: 'Interface holographique (voix)' },
+  { id: 'data-matrix', label: 'Matrice de données' },
+  { id: 'character-card', label: 'Carte personnage' },
+  { id: 'cosmic', label: 'Cosmique' },
+  { id: 'timeline', label: 'Frise chronologique' },
+  { id: 'dramatic', label: 'Dramatique' },
+  { id: 'typography', label: 'Typographie animée' },
 ];
 
 export const STYLE_COLORS: Record<VisualStyle, { accent: string; accent2: string; bg0: string; bg1: string }> = {

@@ -398,7 +398,7 @@ export function buildSequence(input: BuildInput): BuildResult {
       const durationSec = framesToSeconds(g.end - g.start, rate);
       const asset: MediaAsset = {
         id: newId(),
-        name: `P-CORE · ${g.mode}`,
+        name: `P-CORE · ${({ hero: 'central', side: 'côté', corner: 'coin', hidden: 'masqué' } as Record<string, string>)[g.mode] ?? g.mode}`,
         kind: 'video',
         path: '',
         fingerprint: { size: 0, mtimeMs: 0, partialHash: `pcore-${g.mode}-${size}-${offsetSec.toFixed(3)}-${durationSec.toFixed(3)}` },

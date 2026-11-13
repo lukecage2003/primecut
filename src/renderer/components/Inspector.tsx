@@ -378,7 +378,7 @@ function VisualEditor({ mediaId }: { mediaId: string }) {
   };
   return (
     <div className="insp" style={{ padding: 0 }} data-testid="visual-editor">
-      <div className="section-title">Motion design {busy ? '· rendering…' : ''}</div>
+      <div className="section-title">Animation {busy ? '· calcul…' : ''}</div>
       <div className="insp-row">
         <label>Composition</label>
         <select className="input" value={g.kind} disabled={busy} onChange={(e) => void apply({ kind: e.target.value as never })} data-testid="visual-kind">
