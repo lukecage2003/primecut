@@ -11,8 +11,9 @@ Branche : `claude/gallant-hawking-c8govj`. Avant tout : `npm ci && npm test` (13
   le seul cas restant, « de de », est plausible. Whisper n'a écrit aucun « euh ».
 
 ## Prochain lot, dans l'ordre (voir ROADMAP_MASTER.md, chemin critique)
-1. FFmpeg minimal : lire le 1er passage du workflow « FFmpeg minimal », épingler les empreintes
-   relevées (RECORDED.json), puis étape 2 (libass et sa pile, AMF, libvpl) jusqu'à 0 capacité manquante.
+1. FFmpeg minimal, étape 2 : libass (freetype, fribidi, harfbuzz avec meson, DirectWrite plutôt que
+   fontconfig), libmp3lame, en-têtes AMF, libvpl, jusqu'à 0 capacité manquante. L'étape 1 compile et
+   toutes les sources sont épinglées.
    Ensuite : comparaison des exports avec le binaire BtbN.
 2. Musique dans la production : cible par section, score, transitions sur pauses, Remplacer/Verrouiller
    (`docs/CONCEPTION_MUSIQUE.md` §3 à 6).

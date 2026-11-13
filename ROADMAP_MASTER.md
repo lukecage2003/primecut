@@ -37,7 +37,7 @@ des modèles. Voir `docs/ARCHITECTURE_CIBLE.md`.
 | Journal | journal JSON, rotation, corrélation, anonymisation | ✅ | U (5), E, CI Windows run 40 | — | — | — |
 | Diagnostic | matériel, espace, dépendances, fonctions FFmpeg, problèmes récents | 🧪 | U, I, E | recommandations automatiques de profil | — | P1 |
 | FFmpeg | contrôle des capacités (codecs, filtres, formats, nonfree) | 🧪 **nouveau** | I ; auto-test de l'installateur | — | — | P0 |
-| FFmpeg | build minimal reproductible | 🟠 **nouveau** | script et workflow séparés (étape 1) | 1er passage CI, épinglage des empreintes, étape 2 (libass, QSV, AMF), comparaison des exports | — | P0 |
+| FFmpeg | build minimal reproductible | 🟠 **nouveau** | étape 1 compilée en CI (7 min), toutes les sources épinglées ; non-régression : manquent `ass` et `libmp3lame` | étape 2 (libass et sa pile, lame, QSV, AMF), puis comparaison des exports | — | P0 |
 | Orchestrateur | tâches, priorités, dépendances, annulation, progression | ✅ | U, E | reprise, checkpoints, retries contrôlés | — | P1 |
 | Script | import PDF, TXT, Markdown ; blocs VISUELS, sources | ✅ | U, I, R | **DOCX** ⛔ ; éditeur de chapitres ; contradictions | — | P1 |
 | Script | mode sans script (voix → script), type de narration | ✅ | U, I, R | — | — | — |

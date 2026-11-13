@@ -80,3 +80,17 @@ dans `SOURCE.txt` et dans l'auto-test, sans rien publier).
 - **Étape 2, pas encore faite** : libass, freetype, fribidi et harfbuzz (filtre `ass`, indispensable à la
   typographie), en-têtes AMF, libvpl (QSV). Le contrôle des capacités signalera ces manques à l'étape 1 :
   c'est attendu.
+
+### Premier passage (workflow « FFmpeg minimal » n° 1, commit a72ddc8)
+- **Compilation réussie** en 7 min : FFmpeg 8.1.3, x264, x265, libvpx, opus, zlib et en-têtes NVENC,
+  en statique pour Windows. Artefact : binaire, sources, licences, `BUILDCONF.txt`, `SHA256SUMS`.
+- **Empreintes relevées puis épinglées** dans `sources.json` :
+  - FFmpeg `7138d28c…`, libvpx `26fcd3db…`, opus `65c1d2f7…`, zlib `9a93b2b7…` ;
+  - x264 au commit `b35605ac` ;
+  - opus et zlib revérifiés indépendamment depuis la session de développement (identiques).
+- **Non-régression sous Windows avec ce binaire** (le binaire livré n'est pas touché) : échec attendu,
+  pour des manques réels et identifiés :
+  - filtre `ass` (typographie et sous-titres incrustés) → étape 2 ;
+  - `libmp3lame` : l'application n'encode jamais de MP3, mais les tests musique en fabriquent → étape 2 ;
+  - `lavfi` : faux manque du contrôle lui-même (FFmpeg 8 le range parmi les périphériques), corrigé.
+- Tout le reste de la suite passe avec ce binaire.
