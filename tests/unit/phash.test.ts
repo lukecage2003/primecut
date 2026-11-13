@@ -22,5 +22,13 @@ describe('duplicate pictures', () => {
     expect(g.get('big')).toBe('big');
     expect(g.get('other')).toBe('other');
     expect(g.get('nohash')).toBe('nohash');
+    // same structure, different colour (a recoloured variant): not a copy
+    const v = duplicateGroups([
+      { id: 'red', phash: 'f0f0f0f0f0f0f0f0:c02020', area: 100 },
+      { id: 'green', phash: 'f0f0f0f0f0f0f0f0:20c020', area: 90 },
+      { id: 'red-copy', phash: 'f0f0f0f0f0f0f0f1:c22222', area: 50 },
+    ]);
+    expect(v.get('green')).toBe('green');
+    expect(v.get('red-copy')).toBe('red');
   });
 });

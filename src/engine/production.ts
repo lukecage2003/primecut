@@ -52,7 +52,10 @@ export async function detectPagePanels(file: string, w: number, h: number, signa
 export async function imageFingerprint(file: string, signal?: AbortSignal): Promise<string> {
   const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', 'scale=9:8:flags=area,format=gray', '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
   if (stdout.byteLength < 72) throw new Error('vignette incomplète');
-  return dHash(new Uint8Array(stdout.buffer, stdout.byteOffset, 72));
+  // + average colour: a recoloured variant of a cover is a different picture
+  const c = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', 'scale=1:1:flags=area,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
+  const rgb = [...c.stdout.subarray(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  return `${dHash(new Uint8Array(stdout.buffer, stdout.byteOffset, 72))}:${rgb}`;
 }
 
 /** Mean colour saturation (0..1) of a 48×48 thumbnail: black & white pages are near 0. */
