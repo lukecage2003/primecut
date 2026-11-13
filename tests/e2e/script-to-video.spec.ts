@@ -45,6 +45,15 @@ test('script + narration + folder → generated video', async () => {
   // the narration was cleaned into a derived copy; switching back to the original is one undoable edit
   await expect(page.getByTestId('voice-report')).toContainText('LUFS');
   if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('production-report').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06b-report-voice.png') });
+  // the detected narration type and what it changed are explained in the report
+  await expect(page.getByTestId('narration-format')).toContainText('Type de narration');
+  if (process.env.PRIMESTONE_SHOTS) {
+    await page.getByTestId('narration-format').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06d-type-narration.png') });
+    await page.getByTestId('open-settings').click();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '09-reglages.png') });
+    await page.getByRole('button', { name: 'Terminé', exact: true }).click();
+  }
   await page.getByTestId('voice-use-original').click();
   await expect(page.getByTestId('voice-use-clean')).toBeVisible();
   await page.keyboard.press('Control+z');
@@ -87,7 +96,7 @@ test('faceless: no images → motion design shots, editable and re-rendered from
   await page.getByTestId('script-input').fill('Tony Stark construit une intelligence artificielle. En 1963 puis en 2008, Iron Man change tout.');
   await page.getByTestId('generate').click();
   await expect(page.getByTestId('production-panel')).toHaveCount(0, { timeout: 120000 });
-  await expect(page.getByTestId('production-report')).toContainText('motion design');
+  await expect(page.getByTestId('production-report')).toContainText('animation :');
   // P-CORE leads where there is no illustration: its own clip(s) on V2
   expect(await page.locator('[data-testid="clip"]', { hasText: 'P-CORE' }).count()).toBeGreaterThanOrEqual(1);
   // the viewer shows a rendered composition, never black
@@ -99,7 +108,7 @@ test('faceless: no images → motion design shots, editable and re-rendered from
   await expect(page.getByTestId('visual-editor')).toBeVisible();
   await page.getByTestId('visual-kind').selectOption('typography');
   await expect(page.getByTestId('visual-kind')).toHaveValue('typography', { timeout: 60000 });
-  await expect(page.getByTestId('undo')).toHaveAttribute('title', /Edit motion design/, { timeout: 60000 });
+  await expect(page.getByTestId('undo')).toHaveAttribute('title', /Modifier l’animation/, { timeout: 60000 });
   if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '07-faceless.png') });
 });
 
@@ -126,7 +135,7 @@ test('P-CORE Studio: audio response, preview render with transparency, independe
   await page.getByTestId('pcore-export-quality').selectOption('high');
   await page.getByTestId('pcore-export').click();
   await expect(page.getByTestId('pcore-export-check')).toContainText('alpha 0–255', { timeout: 300000 });
-  await expect(page.getByTestId('pcore-export-check')).toContainText(/High Quality: rendered in [\d.]+ s/);
+  await expect(page.getByTestId('pcore-export-check')).toContainText(/Haute qualité : rendu en [\d.]+ s/);
   await expect(page.getByTestId('pcore-fixed')).toBeVisible();
   const probe = JSON.parse((await ffprobe(['-v', 'error', '-show_entries', 'stream=codec_name,pix_fmt', '-of', 'json', out])).stdout.toString());
   expect(probe.streams[0].codec_name).toBe('prores');

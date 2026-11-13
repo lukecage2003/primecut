@@ -19,7 +19,7 @@ test('transitions and fades through the UI', async () => {
   await page.keyboard.press('s');
   await page.keyboard.press('Control+d');
   await expect(page.getByTestId('transition')).toHaveCount(2);
-  await expect(page.getByTestId('transition-inspector')).toContainText('Cross dissolve');
+  await expect(page.getByTestId('transition-inspector')).toContainText('Fondu enchaîné');
   // remove one with Delete, undo brings it back
   await page.getByTestId('transition').first().click();
   await page.keyboard.press('Delete');
@@ -35,7 +35,7 @@ test('transitions and fades through the UI', async () => {
   if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '05-transitions.png') });
   // closing with unsaved changes asks first; Cancel keeps the window open
   void app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
-  await expect(page.getByRole('dialog', { name: 'Save changes?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog', { name: 'Enregistrer les modifications ?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click();
   await expect(page.getByTestId('project-title')).toBeVisible();
 });

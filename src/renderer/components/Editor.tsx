@@ -54,7 +54,7 @@ function onKey(ev: KeyboardEvent) {
   if (k === 'k') return handled(), pause();
   if (k === 'j') return handled(), play(-1);
   if (k === 's') return handled(), splitAtPlayhead();
-  if (k === 'm') return handled(), edit('Add marker', (seq) => addMarker(seq, e.playhead));
+  if (k === 'm') return handled(), edit('Ajouter un marqueur', (seq) => addMarker(seq, e.playhead));
   if (k === '=' || k === '+') return handled(), store.setEditor((x) => ({ zoom: Math.min(64, x.zoom * 1.4) }));
   if (k === '-') return handled(), store.setEditor((x) => ({ zoom: Math.max(0.05, x.zoom / 1.4) }));
   const tool = TOOL_KEYS[k];
@@ -84,38 +84,38 @@ export function Editor() {
         <div className="brand-mark" style={{ width: 28, height: 28, fontSize: 14, borderRadius: 8 }}>
           P
         </div>
-        <button className="btn primary" onClick={() => store.set({ overlay: 'production' })} data-testid="open-production" title="Script + narration → finished video">
-          ✦ Script-to-Video
+        <button className="btn primary" onClick={() => store.set({ overlay: 'production' })} data-testid="open-production" title="Script + narration → vidéo terminée">
+          ✦ Script → Vidéo
         </button>
-        <button className="btn" onClick={() => store.set({ overlay: 'pcore' })} data-testid="open-pcore" title="P-CORE: the voice-reactive Primestone presence">
+        <button className="btn" onClick={() => store.set({ overlay: 'pcore' })} data-testid="open-pcore" title="P-CORE : la présence Primestone qui réagit à la voix">
           P-CORE
         </button>
         <SequenceSwitcher />
         <span className="title" data-testid="project-title">
           {name}
-          {dirty && <span className="dirty" title="Unsaved changes">●</span>}
+          {dirty && <span className="dirty" title="Modifications non enregistrées">●</span>}
         </span>
         <div className="spacer" />
-        <button className="btn ghost" disabled={!canUndo} title={undoLabel ? `Undo ${undoLabel} (Ctrl+Z)` : 'Undo'} onClick={undo} data-testid="undo">
-          ↶ Undo
+        <button className="btn ghost" disabled={!canUndo} title={undoLabel ? `Annuler : ${undoLabel} (Ctrl+Z)` : 'Annuler'} onClick={undo} data-testid="undo">
+          ↶ Annuler
         </button>
-        <button className="btn ghost" disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" onClick={redo} data-testid="redo">
-          ↷ Redo
+        <button className="btn ghost" disabled={!canRedo} title="Rétablir (Ctrl+Maj+Z)" onClick={redo} data-testid="redo">
+          ↷ Rétablir
         </button>
-        <button className="btn" onClick={() => void save()} data-testid="save" title="Save (Ctrl+S)">
-          Save
+        <button className="btn" onClick={() => void save()} data-testid="save" title="Enregistrer (Ctrl+S)">
+          Enregistrer
         </button>
         <button className="btn ghost" onClick={() => store.set({ overlay: overlay === 'tasks' ? null : 'tasks' })} data-testid="tasks-btn">
-          Tasks{running ? ` · ${running}` : ''}
+          Tâches{running ? ` · ${running}` : ''}
         </button>
-        <button className="btn ghost icon" title="Settings & diagnostics" onClick={() => store.set({ overlay: 'settings' })}>
+        <button className="btn ghost icon" title="Réglages et diagnostic" onClick={() => store.set({ overlay: 'settings' })} data-testid="open-settings">
           ⚙
         </button>
         <button className="btn primary" onClick={() => store.set({ overlay: 'export' })} data-testid="export-open">
-          Export
+          Exporter
         </button>
         <button className="btn ghost" onClick={() => void closeProject()} data-testid="close-project">
-          Close
+          Fermer
         </button>
       </div>
       <div className="upper">
@@ -140,11 +140,11 @@ function SequenceSwitcher() {
   const list = Object.values(seqs);
   if (list.length < 2) return null;
   return (
-    <select className="input" style={{ height: 30, maxWidth: 220 }} value={active} onChange={(e) => switchSequence(e.target.value)} data-testid="sequence-switcher" title="Sequences / generated versions">
+    <select className="input" style={{ height: 30, maxWidth: 220 }} value={active} onChange={(e) => switchSequence(e.target.value)} data-testid="sequence-switcher" title="Séquences / versions générées">
       {list.map((s) => (
         <option key={s.id} value={s.id}>
           {s.name}
-          {s.production ? ` · QC ${s.production.qcScore}` : ''}
+          {s.production ? ` · contrôle ${s.production.qcScore}` : ''}
         </option>
       ))}
     </select>

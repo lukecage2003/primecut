@@ -41,7 +41,7 @@ export function Toasts() {
   );
 }
 
-const STATE_LABEL: Record<string, string> = { queued: 'Queued', running: 'Running', verifying: 'Verifying', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+const STATE_LABEL: Record<string, string> = { queued: 'En attente', running: 'En cours', verifying: 'Vérification', done: 'Terminé', failed: 'Échec', cancelled: 'Annulée' };
 
 export function TaskPanel() {
   const tasks = useStore((s) => s.tasks);
@@ -49,15 +49,15 @@ export function TaskPanel() {
   return (
     <div className="tasks glass" data-testid="task-panel">
       <div className="row">
-        <b style={{ flex: 1 }}>Background tasks</b>
+        <b style={{ flex: 1 }}>Tâches en arrière-plan</b>
         <button className="btn ghost" onClick={() => void api.tasks.clearFinished()}>
-          Clear finished
+          Effacer les terminées
         </button>
-        <button className="btn ghost icon" onClick={() => store.set({ overlay: null })} aria-label="Close">
+        <button className="btn ghost icon" onClick={() => store.set({ overlay: null })} aria-label="Fermer">
           ✕
         </button>
       </div>
-      {list.length === 0 && <div className="tiny">No tasks yet.</div>}
+      {list.length === 0 && <div className="tiny">Aucune tâche.</div>}
       {list.map((t) => (
         <div key={t.id} className="task" data-testid={`task-${t.type}`} data-state={t.state}>
           <div className="row">
@@ -74,12 +74,12 @@ export function TaskPanel() {
           <div className="row">
             {(t.state === 'running' || t.state === 'queued') && (
               <button className="btn ghost" onClick={() => void api.tasks.cancel(t.id)}>
-                Cancel
+                Annuler
               </button>
             )}
             {t.type === 'export' && t.state === 'done' && (
               <button className="btn ghost" onClick={() => void api.export.result(t.id).then((r) => api.system.reveal(r.output))}>
-                Show in folder
+                Afficher dans le dossier
               </button>
             )}
           </div>

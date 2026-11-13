@@ -62,7 +62,7 @@ describe('Script-to-Video', () => {
       { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } },
       (_, m) => stages.push(m),
     );
-    expect(stages.filter((x) => !x.startsWith('Rendering'))).toEqual(['Analysing narration', 'Cleaning the voice', 'Synchronising text and voice', 'Indexing media', 'Building the edit', 'Quality control', expect.stringMatching(/QC score/)]);
+    expect(stages.filter((x) => !x.startsWith('Rendu'))).toEqual(['Analyse de la narration', 'Nettoyage de la voix', 'Synchronisation du texte et de la voix', 'Indexation des médias', 'Construction du montage', 'Contrôle qualité', expect.stringMatching(/Contrôle qualité \d+/)]);
     // sound design: procedural SFX on their own track, rendered as real audio files
     const sfxTrack = res.sequence.tracks.find((t) => t.name === 'SFX');
     expect(sfxTrack?.clips.length).toBeGreaterThan(0);
@@ -215,4 +215,51 @@ describe('multi-format versions', () => {
       }
     }, 240000);
   }
+});
+
+describe('comics format detection on real files', () => {
+  it('detects a manga page (black & white, right to left), a colour page and a webtoon strip', async () => {
+    const { scanMediaFolders } = await import('../../src/engine/production');
+    const d = tmpDir('ps-comic-');
+    const lib = path.join(d, 'lib');
+    fs.mkdirSync(lib);
+    // 2×2 panel pages: white gutters, filled panels
+    const page = (file: string, fill: string, w: number, h: number, cols: number, rows: number) => {
+      const boxes = [];
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) boxes.push(`drawbox=x=${Math.round((c * w) / cols + 20)}:y=${Math.round((r * h) / rows + 20)}:w=${Math.round(w / cols - 40)}:h=${Math.round(h / rows - 40)}:c=${fill}:t=fill`);
+      return ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `color=c=white:s=${w}x${h}`, '-vf', boxes.join(','), '-frames:v', '1', path.join(lib, file)]);
+    };
+    await page('page-nb.png', '0x303030', 1400, 2000, 2, 2);
+    await page('page-couleur.png', 'red', 1400, 2000, 2, 2);
+    await page('strip.png', 'blue', 600, 4200, 1, 5);
+    const scan = await scanMediaFolders([lib], d, new Set());
+    const by = (n: string) => scan.assets.find((a) => a.name === n)!;
+    expect(by('page-nb.png').comic).toMatchObject({ format: 'planche', manga: true, readingOrder: 'rtl' });
+    expect(by('page-nb.png').panels![0]!.x).toBeGreaterThan(0.4); // first panel read is the top-right one
+    expect(by('page-couleur.png').comic).toMatchObject({ format: 'planche', manga: false, readingOrder: 'ltr' });
+    expect(by('page-couleur.png').panels![0]!.x).toBeLessThan(0.1);
+    expect(by('strip.png').comic!.format).toBe('webtoon');
+    expect(by('strip.png').panels!.length).toBeGreaterThanOrEqual(4);
+  }, 60000);
+});
+
+describe('pause tightening', () => {
+  it('shortens long pauses in a derived copy and keeps the edit in sync', async () => {
+    const { planTighten, remapTime } = await import('../../src/production');
+    const d = tmpDir('ps-tight-');
+    const n = await makeNarration(d, SENTENCES, 1.6);
+    const project = createProject('T', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const narr = await importMediaFile(n.file, d);
+    project.media[narr.id] = narr;
+    const res = await produceVideo({ project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, tightenPauses: true, voiceCleanup: false } });
+    const narrClip = res.sequence.tracks.flatMap((t) => t.clips).find((c) => res.newMedia.find((m) => m.id === c.mediaId)?.derived)!;
+    const tight = res.newMedia.find((m) => m.id === narrClip.mediaId)!;
+    expect(tight.name).toMatch(/pauses resserrées/);
+    expect(tight.probe.durationSec).toBeLessThan(narr.probe.durationSec - 2.5); // 3 pauses of 1.6 s → 0.45 s
+    expect(res.sequence.production!.qcIssues.some((i) => i.code === 'pauses')).toBe(true);
+    // sentence starts follow the tightened voice (truth remapped through the same cuts)
+    const { analyzeAudio } = await import('../../src/engine');
+    const plan = planTighten((await analyzeAudio(n.file)).silences, narr.probe.durationSec);
+    res.timings!.forEach((t, i) => expect(Math.abs(t.start - remapTime(n.truth[i]!.start, plan.keep))).toBeLessThan(0.3));
+  }, 120000);
 });

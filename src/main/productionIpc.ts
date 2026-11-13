@@ -54,28 +54,28 @@ export function registerProductionIpc() {
         // optional local transcription (word-level sync); any failure falls back to pause alignment
         const tcfg = loadSettings().transcriber;
         let transcript: RecognisedWord[] | null = null;
-        let transcription = 'not configured (sentence-level sync from pauses)';
+        let transcription = 'non configurée (synchro phrase par phrase sur les pauses)';
         const narr = project.media[inputs.narrationMediaId];
         if (tcfg?.enabled && narr) {
           try {
-            c.progress(0.01, 'Transcribing narration locally');
+            c.progress(0.01, 'Transcription locale de la narration');
             const t = await transcribe(narr.path, tcfg, path.join(path.dirname(projectFile), 'Cache'), {
               signal: c.signal,
               fingerprint: narr.fingerprint.partialHash + narr.fingerprint.size,
               prompt: promptFromScript(inputs.script),
-              progress: (f) => c.progress(0.01 + 0.3 * f, `Transcribing narration locally (${Math.round(f * 100)}%)`),
+              progress: (f) => c.progress(0.01 + 0.3 * f, `Transcription locale de la narration (${Math.round(f * 100)}%)`),
             });
             transcript = t.words;
-            transcription = `${t.engine} · ${t.words.length} words${t.cached ? ' (cached)' : ` in ${t.seconds.toFixed(0)} s`}`;
+            transcription = `${t.engine} · ${t.words.length} mots${t.cached ? ' (en cache)' : ` en ${t.seconds.toFixed(0)} s`}`;
             c.log(`Transcription: ${transcription}`);
           } catch (e) {
             if (c.signal.aborted) throw e;
-            transcription = `failed, fell back to pauses: ${(e as Error).message}`;
+            transcription = `échec, synchro sur les pauses : ${(e as Error).message}`;
             c.log(`Transcription ${transcription}`);
           }
         }
         const r = await produceVideo(
-          { project, projectDir: path.dirname(projectFile), ...(inputs.format ? { settings: FORMAT_SIZES[inputs.format], name: `Auto v${Object.values(project.sequences).filter((x) => x.production).length + 1} · ${inputs.format}` } : {}), script: inputs.script, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
+          { project, projectDir: path.dirname(projectFile), ...(inputs.format ? { settings: FORMAT_SIZES[inputs.format], name: `Auto v${Object.values(project.sequences).filter((x) => x.production).length + 1} · ${inputs.format}` } : {}), script: inputs.script, narrationKind: inputs.narrationKind, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
           (f, m) => {
             const base = transcript ? 0.31 : 0;
             c.progress(base + (1 - base) * f, m);
@@ -129,7 +129,7 @@ export function registerProductionIpc() {
   ipcMain.handle('production:renderVisual', (_e, projectFile: string, spec: GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null) =>
     orchestrator.submit({
       type: 'visual',
-      label: `Motion design · ${spec.kind}`,
+      label: `Animation · ${spec.kind}`,
       priority: 'high',
       dedupeKey: `visual:${JSON.stringify(spec)}:${size.width}x${size.height}`,
       run: async (c) => {

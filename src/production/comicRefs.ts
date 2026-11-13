@@ -120,17 +120,17 @@ const sameSeries = (a: string, b: string) => a === b;
 export function compareRefs(cited: ComicRef, media: ComicRef): { verdict: RefVerdict; reason: string } {
   if (!sameSeries(cited.series, media.series)) return { verdict: 'unrelated', reason: '' };
   const label = (r: ComicRef) => `${r.title}${r.volume ? ` vol. ${r.volume}` : ''}${r.issues.length ? ` #${r.issues[0]}${r.issues.length > 1 ? `-${r.issues.at(-1)}` : ''}` : ''}${r.year ? ` (${r.year})` : ''}`;
-  if (cited.volume && media.volume && cited.volume !== media.volume) return { verdict: 'conflict', reason: `other volume: ${label(media)} ≠ ${label(cited)}` };
+  if (cited.volume && media.volume && cited.volume !== media.volume) return { verdict: 'conflict', reason: `autre volume : ${label(media)} ≠ ${label(cited)}` };
   const cy = cited.year;
   const my = media.year;
   if (cy && my) {
     const end = Math.max(cy, cited.yearEnd ?? cy);
-    if (my < cy - 1 || my > end + 1) return { verdict: 'conflict', reason: `other edition: ${label(media)} ≠ ${label(cited)}` };
+    if (my < cy - 1 || my > end + 1) return { verdict: 'conflict', reason: `autre édition : ${label(media)} ≠ ${label(cited)}` };
   }
   if (cited.issues.length && media.issues.length) {
     const hit = media.issues.some((n) => cited.issues.includes(n));
-    if (!hit) return { verdict: 'conflict', reason: `other issue: ${label(media)} ≠ ${label(cited)}` };
-    return { verdict: 'same-issue', reason: `same issue: ${label(media)}` };
+    if (!hit) return { verdict: 'conflict', reason: `autre numéro : ${label(media)} ≠ ${label(cited)}` };
+    return { verdict: 'same-issue', reason: `même numéro : ${label(media)}` };
   }
-  return { verdict: 'same-series', reason: `same series: ${label(media)}` };
+  return { verdict: 'same-series', reason: `même série : ${label(media)}` };
 }

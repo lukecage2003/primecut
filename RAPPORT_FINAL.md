@@ -1,4 +1,4 @@
-# Rapport de livraison — Primestone Motion Studio 0.6.0
+# Rapport de livraison — Primestone Motion Studio 0.7.0
 
 Date : 12 novembre 2026 · Branche : `claude/gallant-hawking-c8govj`
 
@@ -7,9 +7,9 @@ complet** : plusieurs fonctions importantes du cahier des charges sont absentes 
 
 ## 1. Version livrée
 
-- **Primestone Motion Studio 0.6.0**, application de bureau Windows (Electron 45, TypeScript,
+- **Primestone Motion Studio 0.7.0**, application de bureau Windows (Electron 45, TypeScript,
   React) avec FFmpeg 8.1 embarqué (build GPL BtbN).
-- **Installateur** : `Primestone Motion Studio Setup 0.6.0.exe` — 228,1 Mo, NSIS, installation par
+- **Installateur** : `Primestone Motion Studio Setup 0.7.0.exe` — 228,1 Mo, NSIS, installation par
   utilisateur (sans droits administrateur), choix du dossier, raccourcis Bureau et menu Démarrer,
   désinstalleur.
 
@@ -42,6 +42,16 @@ Procédure d'installation : `INSTALLATION_WINDOWS.md`. Premiers pas : `DEMARRAGE
 | Apprentissage | **Learn from my edits** (adaptation de paramètres, pas d'entraînement de modèle) ; historique et **Restore** | tests unitaires |
 | Installation | installation silencieuse, auto-test de l'application installée, désinstallation propre, sur Windows propre | CI run 21 |
 
+## 2 bis. Ajouts v0.7 (13 novembre 2026)
+
+| Fonction | Preuve |
+|---|---|
+| Interface et messages (progression, contrôle qualité, raisons des choix, voix) en français | 6 tests de bout en bout sur l'interface française, captures `docs/images` |
+| **Sans script** : la narration transcrite devient le script (phrases, paragraphes, sections, titres, prises ratées) | votre narration réelle : 53 phrases, 2 sections, prise ratée retirée, contrôle 100/100 ; tests unitaires |
+| **Type de narration** détecté (classement, versus, origine, résumé, théorie, explication, actualité) + longueur (Short, standard, documentaire), réalisation adaptée et expliquée | vos 5 scripts : Télépathie → explication, Beyonder → origine, Apocalypse et Spider-Man → résumé ; tests unitaires |
+| **Format des images de comics** : couverture, planche, double page, webtoon, manga (lecture de droite à gauche) | fichiers réels générés, scan des médias, test d'intégration |
+| Pauses longues resserrées (idée d'auto-editor, Unlicense, réimplémentée) dans une copie, synchronisation conservée | test d'intégration contre la vérité terrain |
+
 ## 3. Partiellement terminé / non disponible
 
 | Fonction | État |
@@ -52,7 +62,7 @@ Procédure d'installation : `INSTALLATION_WINDOWS.md`. Premiers pas : `DEMARRAGE
 | Comparaison chiffrée de deux versions | ⛔ non disponible (les versions sont conservées et consultables) |
 | Gestionnaire de modèles (téléchargement avec accord, empreintes) | ⛔ non disponible : le modèle Whisper et Python s'installent à la main (`INSTALLATION_WINDOWS.md` § 8) |
 | Sous-titres « mot par mot » (karaoké) | ⛔ non disponible |
-| Interface en français | ⛔ l'interface est en anglais ; les guides sont en français |
+| Interface en français | ✅ interface et messages du moteur en français (v0.7) |
 | Intelligence comics | ⚠ partielle : ~50 entités de référence + noms appris du script ; pas de base de publications/dates |
 | Mise à jour automatique | ⚠ manuelle (relancer le nouvel installateur) |
 | Signature de code | ⚠ installateur non signé → avertissement SmartScreen |

@@ -19,7 +19,7 @@ export function Home() {
   const settings = useStore((s) => s.settings);
   const overlay = useStore((s) => s.overlay);
   const [recent, setRecent] = useState<RecentProject[]>([]);
-  const [name, setName] = useState('Untitled Project');
+  const [name, setName] = useState('Projet sans titre');
   const [preset, setPreset] = useState('1080p30');
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState('');
@@ -47,34 +47,34 @@ export function Home() {
             <small>Local-first video editing · v{version}</small>
           </div>
           <div className="spacer" />
-          <button className="btn ghost icon" title="Settings & diagnostics" onClick={() => store.set({ overlay: 'settings' })}>
+          <button className="btn ghost icon" title="Réglages et diagnostic" onClick={() => store.set({ overlay: 'settings' })}>
             ⚙
           </button>
         </div>
 
         <div className="card glass">
-          <h2>New project</h2>
+          <h2>Nouveau projet</h2>
           <label className="field">
-            <span>Name</span>
+            <span>Nom</span>
             <input className="input" data-testid="new-name" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="field">
-            <span>Location</span>
+            <span>Emplacement</span>
             <div className="row">
               <input className="input" style={{ flex: 1 }} value={dir} readOnly data-testid="new-dir" />
               <button
                 className="btn"
                 onClick={async () => {
-                  const d = await api.dialog.chooseFolder('Projects folder', dir);
+                  const d = await api.dialog.chooseFolder('Dossier des projets', dir);
                   if (d) await updateSettings({ projectsDir: d });
                 }}
               >
-                Browse…
+                Parcourir…
               </button>
             </div>
           </label>
           <div className="field">
-            <span>Sequence</span>
+            <span>Séquence</span>
             <div className="preset-grid">
               {SEQUENCE_PRESETS.map((p) => (
                 <div key={p.id} className={`preset ${preset === p.id ? 'on' : ''}`} onClick={() => setPreset(p.id)} data-testid={`preset-${p.id}`}>
@@ -85,7 +85,7 @@ export function Home() {
             </div>
           </div>
           <button className="btn primary" disabled={busy || !name.trim() || !dir} onClick={create} data-testid="create-project">
-            Create project
+            Créer le projet
           </button>
         </div>
 
@@ -97,13 +97,13 @@ export function Home() {
             if (f) await openProject(f);
           }}
         >
-          Open project…
+          Ouvrir un projet…
         </button>
       </div>
 
       <div className="recent glass">
-        <h2 style={{ margin: '0 0 12px', fontSize: 15 }}>Recent projects</h2>
-        {recent.length === 0 && <div className="muted">No recent projects yet. Create one to get started.</div>}
+        <h2 style={{ margin: '0 0 12px', fontSize: 15 }}>Projets récents</h2>
+        {recent.length === 0 && <div className="muted">Aucun projet récent. Créez-en un pour commencer.</div>}
         {recent.map((r) => (
           <div
             key={r.file}
@@ -121,7 +121,7 @@ export function Home() {
             <div className="tiny">{new Date(r.openedAt).toLocaleDateString()}</div>
             <button
               className="btn ghost icon"
-              title="Remove from list"
+              title="Retirer de la liste"
               onClick={async (e) => {
                 e.stopPropagation();
                 await api.project.forgetRecent(r.file);

@@ -23,17 +23,17 @@ export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: P
   // coverage
   let t = 0;
   for (const c of v1.clips) {
-    if (c.start > t) issues.push({ severity: 'error', code: 'gap', message: `Black gap ${sec(t).toFixed(2)}–${sec(c.start).toFixed(2)} s`, frame: t });
+    if (c.start > t) issues.push({ severity: 'error', code: 'gap', message: `Trou noir ${sec(t).toFixed(2)}–${sec(c.start).toFixed(2)} s`, frame: t });
     t = Math.max(t, clipEnd(c));
   }
-  if (t < end) issues.push({ severity: 'error', code: 'gap', message: `No picture after ${sec(t).toFixed(2)} s`, frame: t });
+  if (t < end) issues.push({ severity: 'error', code: 'gap', message: `Aucune image après ${sec(t).toFixed(2)} s`, frame: t });
   // shot lengths & repetition
   v1.clips.forEach((c, i) => {
     const d = sec(c.duration);
-    if (d < prefs.shotMin * 0.5) issues.push({ severity: 'warning', code: 'shot-short', message: `Shot ${i + 1} is very short (${d.toFixed(2)} s)`, frame: c.start });
-    if (d > prefs.shotMax * 1.6) issues.push({ severity: 'warning', code: 'shot-long', message: `Shot ${i + 1} is long (${d.toFixed(1)} s)`, frame: c.start });
+    if (d < prefs.shotMin * 0.5) issues.push({ severity: 'warning', code: 'shot-short', message: `Plan ${i + 1} très court (${d.toFixed(2)} s)`, frame: c.start });
+    if (d > prefs.shotMax * 1.6) issues.push({ severity: 'warning', code: 'shot-long', message: `Plan ${i + 1} long (${d.toFixed(1)} s)`, frame: c.start });
     const prev = v1.clips[i - 1];
-    if (prev && prev.mediaId === c.mediaId && clipEnd(prev) === c.start) issues.push({ severity: 'warning', code: 'repeat', message: `Same image twice in a row at shot ${i + 1}`, frame: c.start });
+    if (prev && prev.mediaId === c.mediaId && clipEnd(prev) === c.start) issues.push({ severity: 'warning', code: 'repeat', message: `Même image deux fois de suite au plan ${i + 1}`, frame: c.start });
   });
   // rights
   const used = new Set(seq.tracks.flatMap((tr) => tr.clips.map((c) => c.mediaId)));
@@ -41,23 +41,23 @@ export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: P
     const m = media[id];
     if (!m) continue;
     const u = m.rights?.usage;
-    if (u && ['permission-required', 'view-only', 'unknown'].includes(u)) issues.push({ severity: 'error', code: 'rights', message: `${m.name}: usage rights not cleared (${u}) — must not be published` });
-    if (u === 'reusable' && !m.rights?.attribution) issues.push({ severity: 'warning', code: 'attribution', message: `${m.name}: reusable but attribution missing` });
+    if (u && ['permission-required', 'view-only', 'unknown'].includes(u)) issues.push({ severity: 'error', code: 'rights', message: `${m.name} : droits d’utilisation non vérifiés (${u}) — ne pas publier` });
+    if (u === 'reusable' && !m.rights?.attribution) issues.push({ severity: 'warning', code: 'attribution', message: `${m.name} : réutilisable mais attribution manquante` });
   }
   // placeholders and weak matches
   const placeholders = seq.captions.filter((c) => c.style === 'placeholder').length;
-  for (const o of ctx.offScript ?? []) issues.push({ severity: 'warning', code: 'off-script', message: `Speech not in the script ${o.start.toFixed(1)}–${o.end.toFixed(1)} s (outtake or ad-lib?): “${o.text.slice(0, 80)}${o.text.length > 80 ? '…' : ''}”`, frame: Math.round((o.start * r.num) / r.den) });
-  if (placeholders) issues.push({ severity: 'error', code: 'missing-visual', message: `${placeholders} shot(s) have no visual — add media or regenerate` });
+  for (const o of ctx.offScript ?? []) issues.push({ severity: 'warning', code: 'off-script', message: `Paroles absentes du script ${o.start.toFixed(1)}–${o.end.toFixed(1)} s (prise ratée ou improvisation ?) : “${o.text.slice(0, 80)}${o.text.length > 80 ? '…' : ''}”`, frame: Math.round((o.start * r.num) / r.den) });
+  if (placeholders) issues.push({ severity: 'error', code: 'missing-visual', message: `${placeholders} plan(s) sans image — ajoutez des médias ou régénérez` });
   const weak = seq.production?.shots.filter((s) => s.quality === 'weak').length ?? 0;
-  if (weak) issues.push({ severity: 'info', code: 'weak-match', message: `${weak} shot(s) use a generic image (no specific match)` });
+  if (weak) issues.push({ severity: 'info', code: 'weak-match', message: `${weak} plan(s) avec une image générique (aucune correspondance précise)` });
   // captions
   for (const c of seq.captions) {
     const lines = c.text.split('\n');
-    if (c.style === 'subtitle' && (lines.length > 2 || lines.some((l) => l.length > 48))) issues.push({ severity: 'warning', code: 'caption-overflow', message: `Subtitle too long at ${sec(c.start).toFixed(1)} s`, frame: c.start });
-    if (c.style === 'subtitle' && c.end - c.start < Math.round(0.7 * (r.num / r.den))) issues.push({ severity: 'info', code: 'caption-fast', message: `Subtitle shown < 0.7 s at ${sec(c.start).toFixed(1)} s`, frame: c.start });
+    if (c.style === 'subtitle' && (lines.length > 2 || lines.some((l) => l.length > 48))) issues.push({ severity: 'warning', code: 'caption-overflow', message: `Sous-titre trop long à ${sec(c.start).toFixed(1)} s`, frame: c.start });
+    if (c.style === 'subtitle' && c.end - c.start < Math.round(0.7 * (r.num / r.den))) issues.push({ severity: 'info', code: 'caption-fast', message: `Sous-titre affiché < 0,7 s à ${sec(c.start).toFixed(1)} s`, frame: c.start });
   }
   if (ctx.alignmentConfidence !== undefined && ctx.alignmentConfidence < 0.5)
-    issues.push({ severity: 'warning', code: 'alignment', message: `Text/voice sync is approximate (confidence ${(ctx.alignmentConfidence * 100).toFixed(0)}%) — enable word-level transcription for precise timing` });
+    issues.push({ severity: 'warning', code: 'alignment', message: `Synchro texte/voix approximative (confiance ${(ctx.alignmentConfidence * 100).toFixed(0)}%) — activez la transcription locale pour une synchro mot à mot` });
   const score = Math.max(0, 100 - issues.reduce((a, i) => a + PENALTY[i.severity], 0));
   return { score, issues };
 }

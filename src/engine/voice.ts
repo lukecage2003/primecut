@@ -99,7 +99,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(cmd, `${sample.start.toFixed(3)} afftdn@dn sn start;\n${sample.end.toFixed(3)} afftdn@dn sn stop;\n`);
     dn.filter = `asendcmd=f='${escapeFilterPath(cmd)}',${dn.filter}`;
-    dn.reason += ` (noise profile learned in the pause at ${sample.start.toFixed(1)} s)`;
+    dn.reason += ` (profil de bruit appris dans la pause à ${sample.start.toFixed(1)} s)`;
   }
   const chain = steps.map((s) => s.filter).join(',');
   const meta = `${out}.json`;
@@ -137,7 +137,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
     extra += o.targetLufs - afterLufs;
     if (extra > 12) break; // do not crush the voice into the limiter
     level = levelStep(processed - extra, o);
-    level.reason += ` (${extra >= 0 ? '+' : ''}${extra.toFixed(1)} dB to compensate for the limiter)`;
+    level.reason += ` (${extra >= 0 ? '+' : ''}${extra.toFixed(1)} dB pour compenser le limiteur)`;
   }
   await fsp.rename(part, out);
   const all = [...steps, level];
@@ -146,3 +146,26 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   await fsp.writeFile(meta, JSON.stringify(res, null, 1));
   return res;
 }
+
+/** Renders the narration with long pauses shortened (keep = source ranges kept, in order). Cached. */
+export async function renderTightened(media: Pick<MediaAsset, 'path' | 'fingerprint' | 'probe'>, keep: Interval[], cacheDir: string, signal?: AbortSignal): Promise<string> {
+  const key = crypto.createHash('sha256').update(JSON.stringify(['tight-v1', media.path, media.fingerprint.size, media.fingerprint.partialHash, keep.map((k) => [+k.start.toFixed(3), +k.end.toFixed(3)])])).digest('hex').slice(0, 20);
+  const dir = path.join(cacheDir, 'voice');
+  const out = path.join(dir, `tight-${key}.wav`);
+  try {
+    await fsp.access(out);
+    return out;
+  } catch {
+    /* render */
+  }
+  await fsp.mkdir(dir, { recursive: true });
+  // a filter script file: hundreds of ranges on a 60-minute narration would overflow a command line
+  const script = `${out}.filter.txt`;
+  const sel = keep.map((k) => `between(t,${k.start.toFixed(4)},${k.end.toFixed(4)})`).join('+');
+  await fsp.writeFile(script, `aselect='${sel}',asetpts=N/SR/TB`);
+  const part = `${out}.part.wav`;
+  await ffmpeg(['-v', 'error', '-i', media.path, '-vn', '-filter_script:a', script, '-c:a', 'pcm_s24le', part], { signal });
+  await fsp.rename(part, out);
+  return out;
+}
+

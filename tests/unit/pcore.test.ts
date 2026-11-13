@@ -135,7 +135,7 @@ describe('P-CORE adaptive placement', () => {
     const manual = { enabled: true, x: 0.8, y: 0.3, size: 0.3 };
     const segs = planPlacement(seq, { [pic.id]: pic }, 300, { manual, growOnReveal: false });
     expect(segs).toHaveLength(1);
-    expect(segs[0]!.reason).toMatch(/fixed position/);
+    expect(segs[0]!.reason).toMatch(/position fixe/);
     // centre at 80 % / 30 % of the frame, 30 % of the short side
     expect(segs[0]!.transform.x).toBe(Math.round(0.8 * 1920 - 960));
     expect(segs[0]!.transform.y).toBe(Math.round(0.3 * 1080 - 540));

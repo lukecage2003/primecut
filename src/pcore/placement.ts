@@ -69,10 +69,10 @@ export function placeForShot(media: MediaAsset | null, W: number, H: number, s: 
   const informative = media?.generator && ['character-card', 'timeline', 'typography'].includes(media.generator.kind);
   if (!media || (media.generator && !informative)) {
     const size = s.heroScale * U;
-    return { mode: 'hero', transform: at(W, H, W / 2, Math.min(H / 2, (H - sub) / 2 + m), size), reason: media ? 'procedural composition: P-CORE leads' : 'no illustration: P-CORE leads' };
+    return { mode: 'hero', transform: at(W, H, W / 2, Math.min(H / 2, (H - sub) / 2 + m), size), reason: media ? 'composition procédurale : P-CORE au premier plan' : 'pas d’illustration : P-CORE au premier plan' };
   }
   // informative compositions are not illustrations: P-CORE stays present beside them
-  if (!s.overIllustrations && !informative) return { mode: 'hidden', transform: { x: 0, y: 0, scale: 0.01, rotation: 0, opacity: 0 }, reason: 'illustration: P-CORE hidden by settings' };
+  if (!s.overIllustrations && !informative) return { mode: 'hidden', transform: { x: 0, y: 0, scale: 0.01, rotation: 0, opacity: 0 }, reason: 'illustration : P-CORE masqué par les réglages' };
   const v = media.probe.video;
   if (v) {
     const fit = Math.min(W / v.width, H / v.height);
@@ -82,7 +82,7 @@ export function placeForShot(media: MediaAsset | null, W: number, H: number, s: 
     if (free > 0.12 * W) {
       const size = Math.min(free - 2 * m, s.cornerScale * 1.6 * U);
       const cx = s.corner.endsWith('left') ? free / 2 : W - free / 2;
-      return { mode: 'side', transform: at(W, H, cx, H * 0.42, size), reason: 'page pillarbox: P-CORE in the free side band' };
+      return { mode: 'side', transform: at(W, H, cx, H * 0.42, size), reason: 'planche : P-CORE dans la bande libre sur le côté' };
     }
   }
   // corner with the least overlap with panels / the subject area (centre)
@@ -97,7 +97,7 @@ export function placeForShot(media: MediaAsset | null, W: number, H: number, s: 
     if (!best || cost < best.cost - 1e-6) best = { c, cost };
   }
   const r = cornerRect(best!.c, W, H, size, m, best!.c.startsWith('bottom') ? sub + m : m);
-  return { mode: 'corner', transform: at(W, H, r.x + size / 2, r.y + size / 2, size), reason: `illustration: P-CORE discreet (${best!.c})` };
+  return { mode: 'corner', transform: at(W, H, r.x + size / 2, r.y + size / 2, size), reason: `illustration : P-CORE discret (${best!.c})` };
 }
 
 /** Placement segments covering [0, endFrame) from the V1 shots of the sequence. */
@@ -116,7 +116,7 @@ export function planPlacement(seq: Sequence, media: Record<string, MediaAsset>, 
   if (s.manual?.enabled) {
     const U = Math.min(W, H);
     const size = Math.max(0.05, Math.min(1, s.manual.size)) * U;
-    push(0, endFrame, { mode: s.manual.size >= s.heroScale * 0.8 ? 'hero' : 'corner', transform: at(W, H, s.manual.x * W, s.manual.y * H, size), reason: 'fixed position chosen by the creator' });
+    push(0, endFrame, { mode: s.manual.size >= s.heroScale * 0.8 ? 'hero' : 'corner', transform: at(W, H, s.manual.x * W, s.manual.y * H, size), reason: 'position fixe choisie par le créateur' });
   }
   let t = s.manual?.enabled ? endFrame : 0;
   for (const it of items) {
@@ -138,7 +138,7 @@ export function planPlacement(seq: Sequence, media: Record<string, MediaAsset>, 
       for (let i = 0; i < segs.length; i++) {
         const g = segs[i]!;
         if (g.mode === 'hidden' || g.end <= a || g.start >= b) continue;
-        const grown: PlacementSegment = { ...g, start: Math.max(a, g.start), end: Math.min(b, g.end), transform: { ...g.transform, scale: +(g.transform.scale * (g.mode === 'hero' ? 1.12 : 1.5)).toFixed(4) }, reason: `${g.reason} · reveal: enlarged` };
+        const grown: PlacementSegment = { ...g, start: Math.max(a, g.start), end: Math.min(b, g.end), transform: { ...g.transform, scale: +(g.transform.scale * (g.mode === 'hero' ? 1.12 : 1.5)).toFixed(4) }, reason: `${g.reason} · révélation : agrandi` };
         const parts = [g.start < grown.start ? { ...g, end: grown.start } : null, grown, g.end > grown.end ? { ...g, start: grown.end } : null].filter(Boolean) as PlacementSegment[];
         segs.splice(i, 1, ...parts);
         i += parts.length - 1;

@@ -44,6 +44,10 @@ export interface ProductionPreferences {
   narrationLufs: number;
   /** Clean the narration (hum, rumble, noise, sibilance, level) into a derived copy, from measurements. */
   voiceCleanup: boolean;
+  /** Adapt pacing and cards to the detected narration format (ranking, recap, Short…). */
+  autoDirection: boolean;
+  /** Shorten long pauses of the narration (derived copy; off by default). */
+  tightenPauses: boolean;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
 }
@@ -71,6 +75,8 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   sfxDb: -10,
   narrationLufs: -16,
   voiceCleanup: true,
+  autoDirection: true,
+  tightenPauses: false,
   avoidRepeatWithin: 4,
 };
 

@@ -204,7 +204,7 @@ describe('timeline construction', () => {
     // rights-restricted images are never placed: the shot becomes a procedural composition instead
     expect(r.sequence.tracks[0]!.clips.every((c) => !lib.some((m) => m.id === c.mediaId))).toBe(true);
     expect(r.shots[0]!.quality).toBe('generated');
-    expect(r.shots[0]!.reasons).toContain('no media with usable rights');
+    expect(r.shots[0]!.reasons).toContain('aucun média aux droits utilisables');
   });
 
   it('a same-named work from another year or issue is never used for a cited comic', () => {
@@ -218,7 +218,7 @@ describe('timeline construction', () => {
     const both = build([sw15, sw84]);
     expect(both.sequence.tracks[0]!.clips.map((c) => c.mediaId)).toContain(sw84.id);
     expect(both.sequence.tracks[0]!.clips.map((c) => c.mediaId)).not.toContain(sw15.id);
-    expect(both.shots[0]!.reasons.join(' ')).toMatch(/same issue: Secret Wars #1 \(1984\).*not authenticated/);
+    expect(both.shots[0]!.reasons.join(' ')).toMatch(/même numéro : Secret Wars #1 \(1984\).*non authentifié/);
     // only the 2015 picture: it is not shown as if it were the 1984 comic
     const wrong = build([sw15]);
     expect(wrong.sequence.tracks[0]!.clips.map((c) => c.mediaId)).not.toContain(sw15.id);

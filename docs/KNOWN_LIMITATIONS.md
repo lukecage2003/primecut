@@ -65,3 +65,12 @@ Honest list; each item has a planned phase.
 - Measured only with software WebGL (no GPU here): ≈ 3 fps at 1080². GPU speed on the RTX 3050 unknown.
 - The narration "test spidey" has not been processed: it is on the creator's PC.
 - Emotion is not inferred from the voice (loudness, transients, rhythm and script cues only).
+
+## v0.7
+- Script-less mode needs the local transcription (Python + faster-whisper + a Whisper model, installed
+  by the user). Section titles are names taken from the speech; a section boundary is only found at a
+  long pause or a spoken cue.
+- Narration type detection is rule-based; confidence is often 30–45 % on mixed videos (shown in the
+  report; the type can be forced).
+- Comics format detection relies on gutters between panels: borderless or overlapping panels are
+  not found; a coloured manga is read left to right unless its file name says manga/chapitre.

@@ -120,7 +120,7 @@ export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reaso
     const best = verdicts.find((v) => v.verdict === 'same-issue') ?? verdicts.find((v) => v.verdict === 'same-series');
     if (best) {
       score += best.verdict === 'same-issue' ? 7 : 2;
-      reasons.push(`${best.reason} (read from the file name, not authenticated)`);
+      reasons.push(`${best.reason} (lu dans le nom du fichier, non authentifié)`);
     } else if (verdicts.length) {
       return { score: -10, reasons: [verdicts[0]!.reason] };
     }
@@ -128,11 +128,11 @@ export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reaso
   for (const e of beat.entities) {
     if (e.entityId && item.entityIds.has(e.entityId)) {
       score += e.kind === 'character' || e.kind === 'team' ? 6 : 4;
-      reasons.push(`shows ${e.name}`);
+      reasons.push(`montre ${e.surface.replace(/[.,;:!?»”)]+$/, '') || e.name}`);
     }
     if (e.kind === 'issue' && item.issues.has(e.name.slice(1))) {
       score += 3;
-      reasons.push(`issue ${e.name}`);
+      reasons.push(`numéro ${e.name}`);
     }
   }
   for (const h of beat.hints) {
@@ -140,7 +140,7 @@ export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reaso
     const hit = ht.filter((t) => item.tokens.has(t)).length;
     if (hit) {
       score += 5 * (hit / ht.length) + 2;
-      reasons.push(`matches visual hint “${h}”`);
+      reasons.push(`correspond à l’indication visuelle “${h}”`);
     }
   }
   for (const src of beat.sources ?? []) {
@@ -154,21 +154,21 @@ export function scoreItem(beat: Beat, item: LibraryItem): { score: number; reaso
     if (hit && st.length) {
       const issueHit = issues.some((n) => item.issues.has(n));
       score += 3 * (hit / st.length) + (issueHit ? 3 : 1);
-      reasons.push(`matches source “${src}”${issueHit ? ' (same issue)' : ''}`);
+      reasons.push(`correspond à la source “${src}”${issueHit ? ' (même numéro)' : ''}`);
       break;
     }
   }
   const kw = beat.keywords.filter((k) => item.tokens.has(k));
   if (kw.length) {
     score += Math.min(3, kw.length);
-    reasons.push(`keywords: ${kw.slice(0, 3).join(', ')}`);
+    reasons.push(`mots-clés : ${kw.slice(0, 3).join(', ')}`);
   }
   return { score, reasons };
 }
 
 /** Picks media for a shot, preferring relevance, then variety (no repeats within a window). */
 export function chooseMedia(beat: Beat, library: LibraryItem[], recent: string[], usage: Map<string, number>, prefs: ProductionPreferences, sectionEntities: Set<string>, next?: Beat, reserved?: Map<string, number>): ShotChoice {
-  if (!library.length) return { item: null, score: 0, reasons: ['no media available'], quality: 'missing' };
+  if (!library.length) return { item: null, score: 0, reasons: ['aucun média disponible'], quality: 'missing' };
   let best: ShotChoice | null = null;
   const window = recent.slice(-prefs.avoidRepeatWithin);
   for (const item of library) {
@@ -180,7 +180,7 @@ export function chooseMedia(beat: Beat, library: LibraryItem[], recent: string[]
       const sec = [...item.entityIds].filter((e) => sectionEntities.has(e)).length;
       if (sec) {
         adj = 0.5 * sec;
-        r.push('related to the current section');
+        r.push('liée à la section en cours');
       }
     }
     const owner = reserved?.get(item.asset.id);
@@ -193,8 +193,8 @@ export function chooseMedia(beat: Beat, library: LibraryItem[], recent: string[]
     if (item.asset.rights && !['owned', 'user-provided', 'reusable'].includes(item.asset.rights.usage)) continue; // never auto-place unlicensed media
     if (!best || adj > best.score) best = { item, score: adj, reasons: r, quality: score > 0 ? 'strong' : 'weak' };
   }
-  if (!best) return { item: null, score: 0, reasons: ['no media with usable rights'], quality: 'missing' };
-  if (best.quality === 'weak' && best.reasons.length === 0) best.reasons.push('no specific match: least-used image for variety');
+  if (!best) return { item: null, score: 0, reasons: ['aucun média aux droits utilisables'], quality: 'missing' };
+  if (best.quality === 'weak' && best.reasons.length === 0) best.reasons.push('aucune correspondance précise : image la moins utilisée, pour varier');
   return best;
 }
 

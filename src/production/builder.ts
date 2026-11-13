@@ -25,6 +25,7 @@ import {
   type VisualKind,
   VISUAL_KINDS,
   specHash,
+  COMIC_FORMAT_LABEL,
 } from '../core';
 import { decideVisual } from './visuals';
 import { semanticEvents } from '../pcore/expression';
@@ -126,7 +127,7 @@ export function buildSequence(input: BuildInput): BuildResult {
     generated.push(asset);
     const c = clip(asset.id, asset.name, t, len, Math.min(PAD, startSec));
     v1.clips.push(c);
-    shots.push({ start: t, end: t + len, mediaId: asset.id, beat: beat.index, quality: 'generated', reasons: [...why, `motion design: ${dec.reason}`], text: beat.text });
+    shots.push({ start: t, end: t + len, mediaId: asset.id, beat: beat.index, quality: 'generated', reasons: [...why, `animation : ${dec.reason}`], text: beat.text });
   };
   const reserved = reserveHinted(beats, library);
   const rates = speechRates(input.script.sentences, input.alignment.sentences);
@@ -157,16 +158,16 @@ export function buildSequence(input: BuildInput): BuildResult {
       if (t > bStart && choice.item && nextBeat && prevClip && prevClip.start + prevClip.duration === t && shots.at(-1)?.beat === beat.index && input.library.find((a) => a.id === prevClip.mediaId)?.kind === 'image') {
         const here = scoreItem(beat, choice.item).score;
         const there = scoreItem(nextBeat, choice.item).score;
-        if (there > here && prevClip.duration + len <= Math.round(maxF * 1.5)) {
+        if (there > here && prevClip.duration + len <= Math.round(maxF * 2)) {
           prevClip.duration += len;
           shots.at(-1)!.end += len;
           t += len;
           continue;
         }
       }
-      const generic = choice.quality === 'weak' && choice.reasons.some((r) => r.startsWith('no specific match'));
+      const generic = choice.quality === 'weak' && choice.reasons.some((r) => r.startsWith('aucune correspondance précise'));
       if (prefs.proceduralVisuals && (!choice.item || generic)) {
-        makeVisual(beat, t, len, [...(choice.item ? ['no relevant illustration'] : choice.reasons), 'web search: no provider enabled']);
+        makeVisual(beat, t, len, [...(choice.item ? ['aucune illustration pertinente'] : choice.reasons), 'recherche web : aucun fournisseur activé']);
         t += len;
         continue;
       }
@@ -191,10 +192,13 @@ export function buildSequence(input: BuildInput): BuildResult {
         const imgAspect = v.width / v.height;
         c.motion = { kind: 'panels', amount: 0, path: a.panels.slice(0, nPanels).map((p) => windowFor(p, imgAspect, settings.width / settings.height)) };
       }
+      // a cover is revealed with a slow push-in; a webtoon strip that cannot be read panel by panel scrolls down
+      if (a.comic?.format === 'couverture' && c.motion.kind !== 'panels') c.motion = { kind: 'zoom-in', amount: Math.max(0.08, c.motion.amount) };
+      if (a.comic?.format === 'webtoon' && c.motion.kind !== 'panels') c.motion = { kind: 'pan-down', amount: Math.max(0.2, c.motion.amount) };
       // stills whose aspect differs from the frame (portrait pages, covers) get a blurred fill
       if (a.kind === 'image' && v && c.motion.kind !== 'panels' && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
       v1.clips.push(c);
-      shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: pace.label === 'neutral' ? choice.reasons : [...choice.reasons, `pacing: ${pace.label}`], text: beat.text });
+      shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: [...choice.reasons, ...(a.comic && a.comic.format !== 'illustration' ? [`format : ${COMIC_FORMAT_LABEL[a.comic.format]}${a.comic.manga ? ' manga, lecture de droite à gauche' : ''}${c.motion.kind === 'panels' ? ` · lue case par case (${c.motion.path?.length ?? 0} cases)` : ''}`] : []), ...(pace.label === 'neutral' ? [] : [`rythme : ${pace.label === 'calm' ? 'calme' : 'intense'}`])], text: beat.text });
       recent.push(a.id);
       usage.set(a.id, (usage.get(a.id) ?? 0) + 1);
       t += len;

@@ -23,7 +23,7 @@ import { ask, currentSequence, store, toast } from './store';
 
 function ed() {
   const e = store.state.editor;
-  if (!e) throw new Error('No project open');
+  if (!e) throw new Error('Aucun projet ouvert');
   return e;
 }
 
@@ -63,20 +63,20 @@ export async function openProject(file: string) {
     let project = res.project;
     if (res.recovery) {
       const choice = await ask(
-        'Recover unsaved changes?',
+        'Récupérer les modifications non enregistrées ?',
         `An autosave from ${new Date(res.recovery.savedAt).toLocaleString()} is newer than the saved project. Restore it?`,
         [
-          { label: 'Keep saved version', value: 'discard' },
-          { label: 'Recover', value: 'recover', kind: 'primary' },
+          { label: 'Garder la version enregistrée', value: 'discard' },
+          { label: 'Récupérer', value: 'recover', kind: 'primary' },
         ],
       );
       if (choice === 'recover') project = res.recovery.project;
       else await api.project.discardRecovery(file);
     }
     await enterEditor(res, project, !!res.recovery && project === res.recovery.project);
-    if (res.issues.length) toast(`Project opened with ${res.issues.length} integrity warning(s): ${res.issues[0]}`, 'error');
+    if (res.issues.length) toast(`Projet ouvert avec ${res.issues.length} avertissement(s) d'intégrité : ${res.issues[0]}`, 'error');
   } catch (e) {
-    toast(`Cannot open project: ${errorText(e)}`, 'error');
+    toast(`Impossible d'ouvrir le projet : ${errorText(e)}`, 'error');
   }
 }
 
@@ -116,7 +116,7 @@ async function enterEditor(res: OpenResult, project: Project, recovered = false)
   });
   history.subscribe(() => store.setEditor((e) => ({ version: e.version + 1 })));
   const missing = res.media.filter((m) => m.status === 'missing' || m.status === 'changed').length;
-  if (missing) toast(`${missing} media file(s) offline — use “Locate” in the Media Library to relink.`, 'error');
+  if (missing) toast(`${missing} fichier(s) média hors ligne — utilisez « Localiser… » dans la bibliothèque pour les retrouver.`, 'error');
   for (const m of Object.values(project.media)) void prepareMedia(m);
 }
 
@@ -156,7 +156,7 @@ async function prepareMedia(asset: MediaAsset) {
       );
       if (!dirty) h.markSaved();
     } catch (err) {
-      if (!/Cancel/.test(errorText(err))) toast(`Proxy failed for ${asset.name}: ${errorText(err)}`, 'error');
+      if (!/Cancel/.test(errorText(err))) toast(`Échec du proxy pour ${asset.name} : ${errorText(err)}`, 'error');
     }
   }
 }
@@ -167,10 +167,10 @@ export async function save(): Promise<boolean> {
     const { savedAt } = await api.project.save(e.file, e.history.present);
     e.history.markSaved();
     store.setEditor({ savedAt });
-    toast('Project saved', 'success', undefined, 2000);
+    toast('Projet enregistré', 'success', undefined, 2000);
     return true;
   } catch (err) {
-    toast(`Save failed: ${errorText(err)}`, 'error');
+    toast(`Échec de l'enregistrement : ${errorText(err)}`, 'error');
     return false;
   }
 }
@@ -181,7 +181,7 @@ export async function autosaveTick() {
   try {
     await api.project.autosave(e.file, e.history.present);
   } catch (err) {
-    toast(`Autosave failed: ${errorText(err)}`, 'error');
+    toast(`Échec de la sauvegarde automatique : ${errorText(err)}`, 'error');
   }
 }
 
@@ -189,10 +189,10 @@ export async function autosaveTick() {
 export async function confirmDiscard(): Promise<boolean> {
   const e = store.state.editor;
   if (!e || !e.history.dirty) return true;
-  const v = await ask('Save changes?', `“${e.history.present.name}” has unsaved changes.`, [
-    { label: 'Cancel', value: 'cancel' },
+  const v = await ask('Enregistrer les modifications ?', `“${e.history.present.name}” has unsaved changes.`, [
+    { label: 'Annuler', value: 'cancel' },
     { label: "Don't save", value: 'discard', kind: 'danger' },
-    { label: 'Save', value: 'save', kind: 'primary' },
+    { label: 'Enregistrer', value: 'save', kind: 'primary' },
   ]);
   if (v === 'save') return save();
   if (v === 'discard') {
@@ -214,17 +214,17 @@ export async function importPaths(paths: string[]) {
   if (!paths.length) return;
   const existing = new Set(Object.values(e.history.present.media).map((m) => m.path));
   const fresh = paths.filter((p) => !existing.has(p));
-  if (fresh.length < paths.length) toast(`${paths.length - fresh.length} file(s) already in the project`, 'info');
+  if (fresh.length < paths.length) toast(`${paths.length - fresh.length} fichier(s) déjà dans le projet`, 'info');
   if (!fresh.length) return;
   const res = await api.media.import(e.file, fresh);
-  for (const err of res.errors) toast(`Import failed: ${err.path.split(/[\\/]/).pop()} — ${err.error}`, 'error');
+  for (const err of res.errors) toast(`Échec de l'import : ${err.path.split(/[\\/]/).pop()} — ${err.error}`, 'error');
   if (!res.assets.length) return;
   e.history.commit(`Import ${res.assets.length} file(s)`, (d) => {
     for (const a of res.assets) d.media[a.id] = a as Draft<MediaAsset>;
   });
   store.setEditor((x) => ({ mediaStatus: { ...x.mediaStatus, ...Object.fromEntries(res.assets.map((a) => [a.id, 'online' as const])) } }));
   for (const a of res.assets) void prepareMedia(a);
-  toast(`Imported ${res.assets.length} file(s)`, 'success', undefined, 2000);
+  toast(`${res.assets.length} fichier(s) importé(s)`, 'success', undefined, 2000);
 }
 
 export async function importDialog() {
@@ -237,16 +237,16 @@ export async function relink(asset: MediaAsset) {
   const candidate = await api.dialog.relinkFile(asset.name);
   if (!candidate) return;
   if (!(await api.media.checkRelink(asset, candidate))) {
-    const v = await ask('Different file', 'The selected file does not match the original media (size or content differ). Link it anyway?', [
-      { label: 'Cancel', value: 'no' },
-      { label: 'Link anyway', value: 'yes', kind: 'danger' },
+    const v = await ask('Fichier différent', 'Le fichier choisi ne correspond pas au média d’origine (taille ou contenu différents). Le lier quand même ?', [
+      { label: 'Annuler', value: 'no' },
+      { label: 'Lier quand même', value: 'yes', kind: 'danger' },
     ]);
     if (v !== 'yes') return;
   }
   // Re-probe to keep metadata accurate for the new file.
   const res = await api.media.import(e.file, [candidate]);
   const fresh = res.assets[0];
-  if (!fresh) return toast(`Cannot read ${candidate}`, 'error');
+  if (!fresh) return toast(`Impossible de lire ${candidate}`, 'error');
   e.history.commit(`Relink ${asset.name}`, (d) => {
     d.media[asset.id] = { ...(fresh as Draft<MediaAsset>), id: asset.id, name: asset.name };
   });
@@ -263,7 +263,7 @@ export async function relink(asset: MediaAsset) {
         for (const id of ids) d.media[id]!.path = found[id]!;
       });
       store.setEditor((x) => ({ mediaStatus: { ...x.mediaStatus, ...Object.fromEntries(ids.map((id) => [id, 'online' as const])) } }));
-      toast(`Also relinked ${ids.length} other file(s) found in the same folder`, 'success');
+      toast(`${ids.length} autre(s) fichier(s) retrouvé(s) dans le même dossier`, 'success');
     }
   }
 }
@@ -271,8 +271,8 @@ export async function relink(asset: MediaAsset) {
 export function removeMedia(mediaId: string) {
   const e = ed();
   const used = Object.values(e.history.present.sequences).some((s) => s.tracks.some((t) => t.clips.some((c) => c.mediaId === mediaId)));
-  if (used) return toast('This media is used in the timeline. Remove its clips first.', 'error');
-  e.history.commit('Remove media', (d) => {
+  if (used) return toast('Ce média est utilisé dans la timeline. Retirez d’abord ses clips.', 'error');
+  e.history.commit('Retirer le média', (d) => {
     delete d.media[mediaId];
   });
 }
@@ -317,7 +317,7 @@ export function clearPreview() {
 export function addToTimeline(mediaId: string, start?: number, videoTrack = 0, audioTrack = 0) {
   const e = ed();
   const at = start ?? e.playhead;
-  const ids = edit('Add clip', (seq, media) => placeMedia(seq, media[mediaId]!, { videoTrack, audioTrack, start: at, mode: 'overwrite' }));
+  const ids = edit('Ajouter un clip', (seq, media) => placeMedia(seq, media[mediaId]!, { videoTrack, audioTrack, start: at, mode: 'overwrite' }));
   if (ids) store.setEditor({ selection: ids });
 }
 
@@ -328,15 +328,15 @@ export function splitAtPlayhead() {
   const seq = currentSequence(e);
   const under = e.selection.filter((id) => seq.tracks.some((t) => t.clips.some((c) => c.id === id && c.start < e.playhead && e.playhead < c.start + c.duration)));
   const ids = under.length ? under : undefined;
-  const created = edit('Split', (seq) => splitAt(seq, e.playhead, ids));
-  if (created && created.length === 0) toast('Nothing to split at the playhead', 'info', undefined, 1500);
+  const created = edit('Couper', (seq) => splitAt(seq, e.playhead, ids));
+  if (created && created.length === 0) toast('Rien à couper à la tête de lecture', 'info', undefined, 1500);
 }
 
 export function deleteSelection(ripple: boolean) {
   if (deleteSelectedTransition()) return;
   const e = ed();
   if (!e.selection.length) return;
-  edit(ripple ? 'Ripple delete' : 'Delete', (seq) => deleteClips(seq, e.selection, ripple));
+  edit(ripple ? 'Suppression ripple' : 'Delete', (seq) => deleteClips(seq, e.selection, ripple));
   store.setEditor({ selection: [] });
 }
 
@@ -345,7 +345,7 @@ export function addDefaultTransition() {
   const e = ed();
   const seq = currentSequence(e);
   const fps = seq.settings.frameRate.num / seq.settings.frameRate.den;
-  const ids = edit('Add cross-dissolve', (s, media) => addTransitionsAt(s, media, e.playhead, Math.round(fps), Math.max(2, Math.round(10 / e.zoom))));
+  const ids = edit('Ajouter un fondu enchaîné', (s, media) => addTransitionsAt(s, media, e.playhead, Math.round(fps), Math.max(2, Math.round(10 / e.zoom))));
   if (ids?.length) store.setEditor({ selectedTransition: ids[0]!, selection: [] });
 }
 
@@ -353,7 +353,7 @@ export function deleteSelectedTransition(): boolean {
   const e = ed();
   if (!e.selectedTransition) return false;
   const id = e.selectedTransition;
-  edit('Remove transition', (s) => removeTransition(s, id));
+  edit('Supprimer la transition', (s) => removeTransition(s, id));
   store.setEditor({ selectedTransition: null });
   return true;
 }
@@ -383,7 +383,7 @@ export async function startExport(output: string) {
     store.set({ overlay: 'tasks' });
     return taskId;
   } catch (err) {
-    toast(`Export failed to start: ${errorText(err)}`, 'error');
+    toast(`L'export n'a pas pu démarrer : ${errorText(err)}`, 'error');
     return null;
   }
 }
@@ -410,7 +410,7 @@ export function savedProductionInputs(): ProductionInputs | null {
 /** Runs the Script-to-Video pipeline; the result becomes a new sequence (one undoable step). */
 export async function runProduction(inputs: ProductionInputs, prefs: ProductionPreferences): Promise<boolean> {
   const e = ed();
-  e.history.commit('Production inputs', (d) => {
+  e.history.commit('Éléments de production', (d) => {
     d.metadata[INPUTS_KEY] = JSON.stringify(inputs);
   });
   try {
@@ -419,7 +419,10 @@ export async function runProduction(inputs: ProductionInputs, prefs: ProductionP
     await waitForTask(taskId);
     const r = await api.production.result(taskId);
     const cur = ed();
-    cur.history.commit(`Generate “${r.sequence.name}”`, (d) => {
+    const rebuilt = r.report.scriptSource?.kind === 'narration' ? r.report.scriptSource : null;
+    cur.history.commit(`Générer « ${r.sequence.name} »`, (d) => {
+      // a script rebuilt from the narration is kept as the production script, ready to be corrected
+      if (rebuilt) d.metadata[INPUTS_KEY] = JSON.stringify({ ...inputs, script: rebuilt.markdown });
       for (const m of r.newMedia) d.media[m.id] = m as Draft<MediaAsset>;
       d.sequences[r.sequence.id] = r.sequence as Draft<Sequence>;
       d.activeSequenceId = r.sequence.id;
@@ -432,11 +435,12 @@ export async function runProduction(inputs: ProductionInputs, prefs: ProductionP
     }));
     for (const m of r.newMedia) void prepareMedia(m);
     const qc = r.sequence.production!;
-    toast(`${r.sequence.name}: ${r.report.shots} shots, ${r.report.beats} sequences, QC ${qc.qcScore}/100${r.report.fixes.length ? ` · ${r.report.fixes.length} auto-fix(es)` : ''} · sync: ${r.report.alignment.method === 'transcript' ? 'word-level' : 'pauses'}${r.report.transcription ? ` (${r.report.transcription})` : ''}${r.report.voice ? ` · voice cleaned (${r.report.voice.steps.length} steps)` : ''}`, 'success', undefined, 8000);
+    if (rebuilt) toast(`Script reconstruit depuis la narration : ${rebuilt.sentences} phrases, ${rebuilt.sections} sections. Rouvrez Script → Vidéo pour le relire ou le corriger.`, 'info', undefined, 10000);
+    toast(`${r.sequence.name} : ${r.report.shots} plans, ${r.report.beats} séquences, contrôle ${qc.qcScore}/100${r.report.fixes.length ? ` · ${r.report.fixes.length} correction(s) auto` : ''} · synchro : ${r.report.alignment.method === 'transcript' ? 'mot à mot' : 'pauses'}${r.report.alignment.method === 'transcript' && r.report.transcription ? ` (${r.report.transcription})` : ''}${r.report.voice ? ` · voix nettoyée (${r.report.voice.steps.length} traitements)` : ''}`, 'success', undefined, 8000);
     return true;
   } catch (err) {
     store.setEditor({ productionTask: null });
-    toast(`Generation failed: ${errorText(err)}`, 'error');
+    toast(`Échec de la génération : ${errorText(err)}`, 'error');
     return false;
   }
 }
@@ -460,7 +464,7 @@ function waitForTask(id: string): Promise<void> {
 export function switchSequence(id: string) {
   const e = ed();
   if (e.history.present.activeSequenceId === id) return;
-  e.history.commit('Switch sequence', (d) => {
+  e.history.commit('Changer de séquence', (d) => {
     d.activeSequenceId = id;
   });
   store.setEditor({ selection: [], selectedTransition: null, playhead: 0 });
@@ -469,10 +473,10 @@ export function switchSequence(id: string) {
 /** Compares the current (edited) generated sequence with its generation baseline and adapts preferences. */
 export async function learnFromEdits() {
   const seq = currentSequence(ed());
-  if (!seq.production) return toast('This sequence was not generated automatically', 'error');
+  if (!seq.production) return toast('Cette séquence n’a pas été générée automatiquement', 'error');
   const { changes } = await api.production.learn(seq.production.style as never, measureStyle(seq));
-  if (!changes.length) toast('No measurable difference from the generated version — preferences unchanged', 'info');
-  else toast(`Preferences updated: ${changes.join(' · ')}`, 'success', undefined, 8000);
+  if (!changes.length) toast('Aucune différence mesurable avec la version générée — préférences inchangées', 'info');
+  else toast(`Préférences mises à jour : ${changes.join(' · ')}`, 'success', undefined, 8000);
 }
 
 const VISUAL_LABEL: Record<string, string> = Object.fromEntries(VISUAL_KINDS.map((k) => [k.id, k.label]));
@@ -487,7 +491,7 @@ export async function updateVisual(mediaId: string, patch: Partial<import('../co
   const narr = spec.audio ? e.history.present.media[spec.audio.mediaId] : undefined;
   try {
     const r = await api.production.renderVisual(e.file, spec, { width: seq.settings.width, height: seq.settings.height, rate: `${seq.settings.frameRate.num}/${seq.settings.frameRate.den}` }, narr?.path ?? null);
-    ed().history.commit('Edit motion design', (d) => {
+    ed().history.commit('Modifier l’animation', (d) => {
       const a = d.media[mediaId]!;
       a.generator = spec as Draft<typeof spec>;
       a.path = r.path;
@@ -498,6 +502,6 @@ export async function updateVisual(mediaId: string, patch: Partial<import('../co
     store.setEditor((x) => ({ thumbs: Object.fromEntries(Object.entries(x.thumbs).filter(([k]) => k !== mediaId)) }));
     void prepareMedia(ed().history.present.media[mediaId]!);
   } catch (err) {
-    toast(`Render failed: ${errorText(err)}`, 'error');
+    toast(`Échec du rendu : ${errorText(err)}`, 'error');
   }
 }

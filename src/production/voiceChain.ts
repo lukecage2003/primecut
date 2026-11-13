@@ -193,24 +193,24 @@ export function planVoiceChain(q: VoiceQuality, opts: Partial<VoiceCleanupOption
   const o = { ...DEFAULT_VOICE_CLEANUP, ...opts };
   const steps: VoiceStep[] = [];
   const rumble = q.rumbleShare > 0.05;
-  steps.push({ id: 'highpass', filter: `highpass=f=${rumble ? 90 : 70}:poles=2`, reason: rumble ? `rumble below 70 Hz (${(q.rumbleShare * 100).toFixed(0)} % of the power)` : 'removes DC offset and sub-bass handling noise (inaudible on a voice)' });
+  steps.push({ id: 'highpass', filter: `highpass=f=${rumble ? 90 : 70}:poles=2`, reason: rumble ? `grondement sous 70 Hz (${(q.rumbleShare * 100).toFixed(0)} % de la puissance)` : 'retire la composante continue et les bruits de manipulation graves (inaudibles sur une voix)' });
   if (q.humHz) {
     const f = q.humHz;
-    steps.push({ id: 'hum', filter: [1, 2, 3, 4].map((h) => `bandreject=f=${f * h}:width_type=h:w=${h === 1 ? 4 : 6}`).join(','), reason: `${f} Hz mains hum ${q.humDb.toFixed(0)} dB above its neighbourhood in the pauses` });
+    steps.push({ id: 'hum', filter: [1, 2, 3, 4].map((h) => `bandreject=f=${f * h}:width_type=h:w=${h === 1 ? 4 : 6}`).join(','), reason: `${f} Hz : ronflement secteur ${q.humDb.toFixed(0)} dB au-dessus de son voisinage dans les pauses` });
   }
   // denoise only when the background is audible; strength follows the measured SNR
   if (q.noiseFloorDb > -62 && q.snrDb < 50 && o.strength > 0) {
     const nr = Math.round(Math.max(6, Math.min(24, (36 - q.snrDb * 0.5) * o.strength)));
     const nf = Math.round(Math.max(-80, Math.min(-20, q.noiseFloorDb)));
-    steps.push({ id: 'denoise', filter: `afftdn@dn=nr=${nr}:nf=${nf}:tn=1:rf=${Math.max(-80, nf - 30)}`, reason: `background noise at ${q.noiseFloorDb} dBFS (voice/noise ${q.snrDb} dB): spectral reduction by ${nr} dB` });
+    steps.push({ id: 'denoise', filter: `afftdn@dn=nr=${nr}:nf=${nf}:tn=1:rf=${Math.max(-80, nf - 30)}`, reason: `bruit de fond à ${q.noiseFloorDb} dBFS (voix/bruit ${q.snrDb} dB) : réduction spectrale de ${nr} dB` });
   }
   // dynamics (de-esser, compressor) have absolute thresholds: bring the voice to a nominal level first
   const pre = Math.max(-12, Math.min(24, -18 - q.speechDb));
-  if (Math.abs(pre) >= 1) steps.push({ id: 'gain', filter: `volume=${pre.toFixed(1)}dB`, reason: `voice peaks at ${q.speechDb} dBFS: ${pre > 0 ? '+' : ''}${pre.toFixed(1)} dB before dynamics processing so its thresholds act as designed` });
-  if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: `deesser=i=${q.sibilanceDb > 2 ? 1 : 0.7}:m=0.5:f=0.5`, reason: `strong sibilance (5–9 kHz ${q.sibilanceDb} dB vs the voice band)` });
-  if (q.mudDb > 8 && o.strength > 0) steps.push({ id: 'mud', filter: 'equalizer=f=320:t=q:w=1.1:g=-3', reason: `boomy low-mids (200–500 Hz ${q.mudDb} dB above presence)` });
-  else if (q.mudDb > -2 && q.mudDb <= 8 && q.sibilanceDb < -18 && o.strength > 0) steps.push({ id: 'presence', filter: 'equalizer=f=3200:t=q:w=1:g=2', reason: 'dull voice (little presence and air): +2 dB at 3.2 kHz' });
-  steps.push({ id: 'compress', filter: 'acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:knee=4', reason: 'gentle compression evens the voice level between loud and soft passages' });
+  if (Math.abs(pre) >= 1) steps.push({ id: 'gain', filter: `volume=${pre.toFixed(1)}dB`, reason: `crêtes de voix à ${q.speechDb} dBFS : ${pre > 0 ? '+' : ''}${pre.toFixed(1)} dB avant le traitement dynamique pour que ses seuils agissent comme prévu` });
+  if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: `deesser=i=${q.sibilanceDb > 2 ? 1 : 0.7}:m=0.5:f=0.5`, reason: `sibilance forte (5–9 kHz à ${q.sibilanceDb} dB par rapport à la voix)` });
+  if (q.mudDb > 8 && o.strength > 0) steps.push({ id: 'mud', filter: 'equalizer=f=320:t=q:w=1.1:g=-3', reason: `bas-médiums chargés (200–500 Hz ${q.mudDb} dB au-dessus de la présence)` });
+  else if (q.mudDb > -2 && q.mudDb <= 8 && q.sibilanceDb < -18 && o.strength > 0) steps.push({ id: 'presence', filter: 'equalizer=f=3200:t=q:w=1:g=2', reason: 'voix terne (peu de présence et d’air) : +2 dB à 3,2 kHz' });
+  steps.push({ id: 'compress', filter: 'acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:knee=4', reason: 'compression douce : égalise le niveau entre passages forts et faibles' });
   void o.targetLufs;
   return steps;
 }
@@ -220,5 +220,5 @@ export function levelStep(measuredLufs: number | null, opts: Partial<VoiceCleanu
   const o = { ...DEFAULT_VOICE_CLEANUP, ...opts };
   const gain = measuredLufs == null ? 0 : Math.max(-20, Math.min(24, o.targetLufs - measuredLufs));
   const limit = Math.pow(10, o.ceilingDb / 20).toFixed(4);
-  return { id: 'level', filter: `volume=${gain.toFixed(2)}dB,alimiter=limit=${limit}:attack=2:release=60:level=disabled`, reason: measuredLufs == null ? 'limiter only (loudness not measurable)' : `normalised from ${measuredLufs.toFixed(1)} to ${o.targetLufs} LUFS, peaks held under ${o.ceilingDb} dBFS` };
+  return { id: 'level', filter: `volume=${gain.toFixed(2)}dB,alimiter=limit=${limit}:attack=2:release=60:level=disabled`, reason: measuredLufs == null ? 'limiteur seul (volume non mesurable)' : `volume ramené de ${measuredLufs.toFixed(1)} à ${o.targetLufs} LUFS, crêtes sous ${o.ceilingDb} dBFS` };
 }

@@ -71,6 +71,8 @@ export interface ProductionInputs {
   mediaFolders: string[];
   /** Frame format of the generated version; omitted = the project's own format. */
   format?: OutputFormat;
+  /** Narration format: 'auto' (detected) or forced. */
+  narrationKind?: import('../production/narrationFormat').NarrationKind | 'auto';
 }
 
 export type OutputFormat = '16:9' | '9:16' | '1:1' | '4:5';
@@ -91,6 +93,7 @@ export interface ProductionOutcome {
     scriptImport?: { title: string | null; sections: number; repairs: number };
     transcription?: string;
     voice?: { steps: { id: string; reason: string }[]; afterLufs: number | null };
+    scriptSource?: { kind: 'script' } | { kind: 'narration'; title: string; sentences: number; sections: number; markdown: string };
   };
 }
 

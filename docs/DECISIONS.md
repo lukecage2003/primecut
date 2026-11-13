@@ -128,3 +128,21 @@ same-named series → the picture is excluded for that passage** (Secret Wars 19
 "Marvel Super-Heroes" are ignored) so "Batman" never matches "Batman and Robin". Nothing is looked
 up online; a picture is never presented as authenticated.
 
+## ADR-020 — v0.7: French UI, script-less mode, narration and comics formats, pause tightening
+
+- UI and engine messages translated to French in place (the product targets a French-speaking
+  audience; no i18n framework until a second language is needed). Logic that compared message text
+  (generic-image detection in the builder) was found and kept consistent.
+- No written script: the recogniser's words are rebuilt into a script (sentences from punctuation and
+  pauses, sections from long pauses and spoken cues, titles from the most-cited names in their spoken
+  form, retakes at the end removed). Every word was spoken, so the alignment is exact.
+- Narration format and length class are detected by explainable rules (cue counts per 1 000 words,
+  countdown/N° headings) and mapped to direction presets applied to a copy of the preferences.
+- Comics image format from proportions, detected panels and colour saturation; manga pages are read
+  right to left (row-wise reordering of the detected panels). Inspired by the problem Kumiko solves;
+  no code reused.
+- Long pauses shortened in a derived copy (idea from auto-editor, Unlicense); all times remapped.
+- GitHub research (search API): auto-editor (Unlicense), Kumiko, MoneyPrinterTurbo (MIT), WhisperX
+  (BSD-2). Reading their code needs repository access in this session; only ideas were used. WhisperX's
+  forced alignment would need a second model download — not done without the user's consent.
+

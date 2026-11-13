@@ -63,7 +63,7 @@ export function Viewer() {
   return (
     <div className="panel glass viewer">
       <div className="panel-head">
-        <h3>Program</h3>
+        <h3>Programme</h3>
         <div className="spacer" />
         <span className="tiny mono">
           {seqW}×{seqH} · {(rate.num / rate.den).toFixed(3).replace(/\.?0+$/, '')} fps
@@ -71,7 +71,7 @@ export function Viewer() {
       </div>
       <div className="viewer-stage" ref={boxRef}>
         <div className="viewer-canvas" ref={stageRef} style={{ width: size.w, height: size.h }} data-testid="viewer-canvas">
-          {empty && <div className="viewer-empty">Add media to the timeline to preview</div>}
+          {empty && <div className="viewer-empty">Ajoutez des médias à la timeline pour les voir ici</div>}
           <CaptionLayer height={size.h} />
         </div>
       </div>
@@ -80,19 +80,19 @@ export function Viewer() {
           {framesToTimecode(playhead, rate)}
         </span>
         <div className="spacer" />
-        <button className="btn ghost icon" title="Go to start (Home)" onClick={() => (pause(), setPlayhead(0))}>
+        <button className="btn ghost icon" title="Aller au début (Début)" onClick={() => (pause(), setPlayhead(0))}>
           ⏮
         </button>
-        <button className="btn ghost icon" title="Previous frame (←)" onClick={() => (pause(), setPlayhead(playhead - 1))}>
+        <button className="btn ghost icon" title="Image précédente (←)" onClick={() => (pause(), setPlayhead(playhead - 1))}>
           ◀
         </button>
-        <button className="btn primary icon" title="Play / Pause (Space)" onClick={togglePlay} data-testid="play" disabled={empty} style={{ width: 40 }}>
+        <button className="btn primary icon" title="Lecture / Pause (Espace)" onClick={togglePlay} data-testid="play" disabled={empty} style={{ width: 40 }}>
           {playing ? '❚❚' : '▶'}
         </button>
-        <button className="btn ghost icon" title="Next frame (→)" onClick={() => (pause(), setPlayhead(playhead + 1))}>
+        <button className="btn ghost icon" title="Image suivante (→)" onClick={() => (pause(), setPlayhead(playhead + 1))}>
           ▶
         </button>
-        <button className="btn ghost icon" title="Go to end (End)" onClick={() => (pause(), setPlayhead(duration))}>
+        <button className="btn ghost icon" title="Aller à la fin (Fin)" onClick={() => (pause(), setPlayhead(duration))}>
           ⏭
         </button>
         <div className="spacer" />

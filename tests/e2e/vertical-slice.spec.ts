@@ -108,7 +108,7 @@ test('vertical slice: create → import → edit → save → reopen → export'
 
   // 8. save
   await page.keyboard.press('Control+s');
-  await expect(page.getByTestId('toast-success').filter({ hasText: 'saved' })).toBeVisible();
+  await expect(page.getByTestId('toast-success').filter({ hasText: 'enregistré' })).toBeVisible();
   await expect(page.getByTestId('project-title').locator('.dirty')).toHaveCount(0);
   const onDisk = await readProjectFile(projectFile);
   expect(onDisk.issues).toEqual([]);
@@ -175,8 +175,8 @@ test('crash recovery: autosave restores unsaved edits after a hard kill', async 
 
   ({ app, page } = await launch(w.userData));
   await page.getByTestId('recent-item').click();
-  await expect(page.getByRole('dialog', { name: 'Recover unsaved changes?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Recover' }).click();
+  await expect(page.getByRole('dialog', { name: 'Récupérer les modifications non enregistrées ?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Récupérer' }).click();
   await expect(page.getByTestId('clip')).toHaveCount(2);
   await expect(page.getByTestId('project-title').locator('.dirty')).toHaveCount(1);
   await page.keyboard.press('Control+s');

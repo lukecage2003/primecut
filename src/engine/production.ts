@@ -26,21 +26,38 @@ import {
 import { loadDictionary } from './scriptFile';
 import { analyzeAudio, analyzeNarration } from './audioAnalysis';
 import { fingerprintFile, importMediaFile } from './media';
-import { cleanVoice } from './voice';
+import { cleanVoice, renderTightened } from './voice';
+import { planTighten, remapTime } from '../production/pauses';
+import { scriptFromTranscript } from '../production/transcriptScript';
+import { NARRATION_KINDS, type NarrationKind, detectNarrationFormat, directionFor, rankCard } from '../production/narrationFormat';
 import type { VoiceQuality } from '../production/voiceChain';
 import { renderGenerator } from './generators';
 import { renderSfx } from './sfx';
 import { probeMedia } from './probe';
 import { ffmpeg } from './ffmpeg';
-import { detectPanels } from '../core';
+import { classifyComicImage, detectPanels, orderPanels } from '../core';
 
 /** Decodes a page at low resolution and runs panel detection (XY-cut on gutters). */
 export async function detectPagePanels(file: string, w: number, h: number, signal?: AbortSignal) {
-  const W = 320;
-  const H = Math.max(2, Math.round((W * h) / w / 2) * 2);
+  // tall strips (webtoons) keep enough vertical resolution to find their gutters
+  const W = w / h <= 0.45 ? 200 : 320;
+  const H = Math.max(2, Math.min(4000, Math.round((W * h) / w / 2) * 2));
   const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `scale=${W}:${H},format=gray`, '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
   const panels = detectPanels(new Uint8Array(stdout.buffer, stdout.byteOffset, W * H), W, H);
   return panels.length >= 2 ? panels : undefined;
+}
+
+/** Mean colour saturation (0..1) of a 48×48 thumbnail: black & white pages are near 0. */
+export async function imageSaturation(file: string, signal?: AbortSignal): Promise<number> {
+  const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', 'scale=48:48,format=rgb24', '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
+  let acc = 0;
+  const n = Math.floor(stdout.byteLength / 3);
+  for (let i = 0; i < n; i++) {
+    const r = stdout[i * 3]!, g = stdout[i * 3 + 1]!, b = stdout[i * 3 + 2]!;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    acc += mx === 0 ? 0 : (mx - mn) / mx;
+  }
+  return n ? acc / n : 0;
 }
 
 const MEDIA_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff', '.gif', '.mp4', '.mov', '.mkv', '.webm', '.m4v']);
@@ -95,7 +112,16 @@ export async function scanMediaFolders(folders: string[], projectDir: string, kn
       a.tags = tags;
       a.rights = rights;
       const v = a.probe.video;
-      if (a.kind === 'image' && v && v.height > v.width * 1.15) a.panels = await detectPagePanels(a.path, v.width, v.height, signal).catch(() => undefined);
+      if (a.kind === 'image' && v) {
+        // pages, double pages and webtoon strips: panels; then the comics format and reading order
+        const ar = v.width / v.height;
+        if (ar < 0.87 || ar >= 1.25) a.panels = await detectPagePanels(a.path, v.width, v.height, signal).catch(() => undefined);
+        const sat = await imageSaturation(a.path, signal).catch(() => null);
+        a.comic = classifyComicImage({ width: v.width, height: v.height, panels: a.panels, saturation: sat, name: a.name });
+        // a wide picture is only read panel by panel when it really is a spread (3+ panels)
+        if (ar >= 1.25 && a.comic.format !== 'double-page') a.panels = undefined;
+        if (a.panels && a.comic.readingOrder === 'rtl') a.panels = orderPanels(a.panels, 'rtl');
+      }
       out.assets.push(a);
     } catch (e) {
       out.errors.push({ path: f, error: (e as Error).message });
@@ -114,6 +140,8 @@ export interface ProductionRequest {
   settings?: Partial<SequenceSettings>;
   prefs: ProductionPreferences;
   pcorePlacement?: Partial<import('../pcore/placement').PlacementSettings>;
+  /** Force a narration format instead of the detected one ('auto' = detect). */
+  narrationKind?: NarrationKind | 'auto';
   /** Renders a P-CORE asset (Electron host); without it P-CORE clips are left out and reported. */
   renderPCore?: (asset: MediaAsset, narration: MediaAsset, settings: SequenceSettings, signal?: AbortSignal) => Promise<string>;
   /** Optional word timestamps from a local recogniser (precise alignment). */
@@ -140,6 +168,9 @@ export interface ProductionResult {
     transcription?: string;
     /** Narration cleanup: steps chosen from measurements, before/after metrics. */
     voice?: VoiceReport;
+    /** Where the script came from: the written script, or rebuilt from the narration (no script given). */
+    narrationFormat?: import('../core/model').ProductionNarrationFormat;
+    scriptSource?: { kind: 'script' } | { kind: 'narration'; title: string; sentences: number; sections: number; markdown: string };
   };
 }
 
@@ -154,6 +185,8 @@ export interface VoiceReport {
   seconds: number;
   cached: boolean;
   latencyMs?: number;
+  /** false when the edit uses a tightened copy (the original no longer matches the timing). */
+  swappable?: boolean;
 }
 
 export async function produceVideo(req: ProductionRequest, progress: (f: number, msg: string) => void = () => undefined, signal?: AbortSignal): Promise<ProductionResult> {
@@ -161,17 +194,24 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   if (!original?.probe.audio) throw new Error('Narration audio not found in the project');
   let narration: MediaAsset = original;
   // real production scripts (PDF/Docs exports) are converted; Primestone Markdown is used as is
-  const imported = isCanonicalScript(req.script) ? null : importProductionScript(req.script, { dictionary: loadDictionary(), transcriptVocabulary: req.transcript?.map((w) => w.text) });
-  const script = parseScript(imported ? imported.markdown : req.script);
-  if (!script.sentences.length) throw new Error('The script contains no narration text');
+  // no written script: the narration itself becomes the script (needs the local transcription)
+  let fromVoice: ReturnType<typeof scriptFromTranscript> | null = null;
+  if (!req.script.trim()) {
+    if (!req.transcript?.length) throw new Error('Sans script, la transcription locale est nécessaire : Réglages → Transcription locale (ou collez votre script).');
+    fromVoice = scriptFromTranscript(req.transcript);
+  }
+  const source = fromVoice ? fromVoice.markdown : req.script;
+  const imported = fromVoice || isCanonicalScript(source) ? null : importProductionScript(source, { dictionary: loadDictionary(), transcriptVocabulary: req.transcript?.map((w) => w.text) });
+  const script = parseScript(imported ? imported.markdown : source);
+  if (!script.sentences.length) throw new Error('Le script ne contient aucun texte de narration');
 
-  progress(0.05, 'Analysing narration');
+  progress(0.05, 'Analyse de la narration');
   let na = await analyzeNarration(original.path, { signal });
   // voice cleanup → a derived copy used by the edit; the recording itself is never modified
   let voice: VoiceReport | undefined;
   const voiceNotes: string[] = [];
   if (req.prefs.voiceCleanup !== false) {
-    progress(0.1, 'Cleaning the voice');
+    progress(0.1, 'Nettoyage de la voix');
     try {
       const vc = await cleanVoice(original, path.join(req.projectDir, 'Cache'), { targetLufs: req.prefs.narrationLufs, silences: na.silences }, signal);
       const asset = await importMediaFile(vc.path, req.projectDir, signal);
@@ -182,27 +222,55 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       voice = { mediaId: asset.id, originalId: original.id, latencyMs: vc.latencyMs, steps: vc.steps.map((s) => ({ id: s.id, reason: s.reason })), before: vc.before, after: vc.after, beforeLufs: vc.beforeLufs, afterLufs: vc.afterLufs, seconds: vc.seconds, cached: vc.cached };
     } catch (e) {
       if (signal?.aborted) throw e;
-      voiceNotes.push(`Voice cleanup skipped: ${(e as Error).message}`);
+      voiceNotes.push(`Nettoyage de la voix ignoré : ${(e as Error).message}`);
+    }
+  }
+  // optional pause tightening (long pauses shortened) → another derived copy; every time is remapped
+  let transcript = req.transcript ?? null;
+  let tightened: { pauses: number; removedSec: number } | null = null;
+  if (req.prefs.tightenPauses) {
+    const plan = planTighten(na.silences, narration.probe.durationSec);
+    if (plan.removedSec >= 0.5) {
+      progress(0.2, 'Resserrement des pauses');
+      const file = await renderTightened(narration, plan.keep, path.join(req.projectDir, 'Cache'), signal);
+      const asset = await importMediaFile(file, req.projectDir, signal);
+      asset.name = `${original.name.replace(/\.[^.]+$/, '')} · pauses resserrées.wav`;
+      asset.derived = { from: original.id, kind: 'voice-cleanup', steps: [...(narration.derived?.steps ?? []), 'pauses'] };
+      narration = asset;
+      na = await analyzeNarration(asset.path, { signal });
+      transcript = transcript?.map((w) => ({ ...w, start: remapTime(w.start, plan.keep), end: remapTime(w.end, plan.keep) })) ?? null;
+      tightened = { pauses: plan.pauses, removedSec: plan.removedSec };
+      if (voice) voice = { ...voice, mediaId: asset.id, swappable: false };
     }
   }
   const music = req.musicMediaId ? req.project.media[req.musicMediaId] : null;
   const ma = music ? await analyzeAudio(music.path, { signal }) : null;
 
-  progress(0.25, 'Synchronising text and voice');
+  progress(0.25, 'Synchronisation du texte et de la voix');
   let alignment: AlignmentResult;
   const speech = speechFromSilences(na.silences, narration.probe.durationSec);
-  if (req.transcript?.length) alignment = alignToTranscript(script.sentences, req.transcript, speech);
+  if (transcript?.length) alignment = alignToTranscript(script.sentences, transcript, speech);
   else alignment = alignByPauses(script.sentences, speech);
 
-  progress(0.35, 'Indexing media');
+  progress(0.35, 'Indexation des médias');
   const known = new Set(Object.values(req.project.media).map((m) => m.path));
   const scan = await scanMediaFolders(req.mediaFolders, req.projectDir, known, signal);
   const library = [...Object.values(req.project.media).filter((m) => m.id !== narration.id && m.id !== original.id && m.id !== music?.id && !m.derived), ...scan.assets];
 
-  progress(0.6, 'Building the edit');
+  progress(0.6, 'Construction du montage');
   const tailNotes: string[] = [];
   const base = Object.values(req.project.sequences)[0]?.settings;
   const settings: SequenceSettings = { width: 1920, height: 1080, frameRate: { num: 30, den: 1 }, sampleRate: 48000, ...base, ...req.settings };
+  // narration format (ranking, versus, recap…) and length class → direction preset (explained, overridable)
+  const detected = detectNarrationFormat(script, narration.probe.durationSec, settings.height > settings.width);
+  const kind = req.narrationKind && req.narrationKind !== 'auto' ? req.narrationKind : detected.kind;
+  const direction = req.prefs.autoDirection === false ? { prefs: req.prefs, changes: [] as string[] } : directionFor({ kind, length: detected.length }, req.prefs);
+  const prefs = direction.prefs;
+  if (kind === 'classement') for (const s of script.sentences) {
+    const card = rankCard(s.text);
+    if (card && !s.onScreen.includes(card)) s.onScreen.unshift(card);
+  }
+  const narrationFormat = { kind, label: NARRATION_KINDS[kind], forced: kind !== detected.kind, detected: detected.kind, confidence: detected.confidence, length: detected.length, evidence: detected.evidence, changes: direction.changes };
   const versions = Object.values(req.project.sequences).filter((s) => s.production).length;
   const name = req.name ?? `Auto v${versions + 1}`;
   // a recording that ends with speech not in the script (outtake, retake) is cut after the last sentence
@@ -211,9 +279,9 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const tail = alignment.offScript?.find((o) => o.start >= lastEnd - 0.2 && o.end >= narration.probe.durationSec - 1.5);
   if (tail) {
     narrationEndSec = Math.min(tail.start - 0.05, lastEnd + 0.8);
-    tailNotes.push(`Outtake after the script left out (${tail.start.toFixed(1)}–${tail.end.toFixed(1)} s): “${tail.text.slice(0, 60)}…” — extend the narration clip to restore it`);
+    tailNotes.push(`Prise hors script en fin d'enregistrement retirée du montage (${tail.start.toFixed(1)}–${tail.end.toFixed(1)} s): “${tail.text.slice(0, 60)}…” — rallongez le clip de narration pour la récupérer`);
   }
-  const built = buildSequence({ name, settings, script, alignment, narration, narrationEndSec, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs: req.prefs, pcorePlacement: req.pcorePlacement });
+  const built = buildSequence({ name, settings, script, alignment, narration, narrationEndSec, narrationLufs: na.integratedLufs, music, musicLufs: ma?.integratedLufs ?? null, library, prefs, pcorePlacement: req.pcorePlacement });
 
   // render procedural compositions (cached by spec hash) so they behave like ordinary media
   const pcoreNotes: string[] = [];
@@ -221,7 +289,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     const pc = new Set(built.generated.filter((g) => g.pcore).map((g) => g.id));
     if (pc.size) {
       for (const t of built.sequence.tracks) t.clips = t.clips.filter((c) => !pc.has(c.mediaId));
-      pcoreNotes.push('P-CORE not rendered: no 3D renderer in this context (run inside the app)');
+      pcoreNotes.push('P-CORE non calculé : pas de moteur 3D dans ce contexte (lancez-le dans l’application)');
     }
   }
   const toRender = built.generated.filter((g) => built.sequence.tracks.some((t) => t.clips.some((c) => c.mediaId === g.id)));
@@ -233,7 +301,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const rate = `${settings.frameRate.num}/${settings.frameRate.den}`;
   const worker = async () => {
     for (let g = toRender.shift(); g; g = toRender.shift()) {
-      progress(0.65 + 0.15 * (done / Math.max(1, built.generated.length)), `Rendering motion design & sound (${done + 1}/${built.generated.length})`);
+      progress(0.65 + 0.15 * (done / Math.max(1, built.generated.length)), `Rendu des animations et du son (${done + 1}/${built.generated.length})`);
       g.path = g.sfx ? await renderSfx(g.sfx, cacheDir, signal) : await renderGenerator(g.generator!, { width: settings.width, height: settings.height, rate, audioPath: narration.path, cacheDir, signal });
       g.fingerprint = await fingerprintFile(g.path);
       if (g.sfx) g.probe = (await probeMedia(g.path, signal)).probe;
@@ -245,7 +313,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   const workers = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 3)));
   if (toRender.length) await Promise.all(Array.from({ length: workers }, () => worker()));
   for (const [i, g] of pcoreQueue.entries()) {
-    progress(0.72 + 0.08 * (i / pcoreQueue.length), `Rendering P-CORE (${i + 1}/${pcoreQueue.length})`);
+    progress(0.72 + 0.08 * (i / pcoreQueue.length), `Rendu de P-CORE (${i + 1}/${pcoreQueue.length})`);
     try {
       g.path = await req.renderPCore!(g, narration, settings, signal);
       g.fingerprint = await fingerprintFile(g.path);
@@ -255,12 +323,12 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       // P-CORE must never break a production: leave it out and say why
       const failed = new Set(pcoreQueue.slice(i).map((x) => x.id));
       for (const t of built.sequence.tracks) t.clips = t.clips.filter((c) => !failed.has(c.mediaId));
-      pcoreNotes.push(`P-CORE left out: ${(e as Error).message}`);
+      pcoreNotes.push(`P-CORE non inclus : ${(e as Error).message}`);
       break;
     }
   }
 
-  progress(0.8, 'Quality control');
+  progress(0.8, 'Contrôle qualité');
   const mediaMap: Record<string, MediaAsset> = { ...req.project.media, ...Object.fromEntries([...scan.assets, ...built.generated, narration].map((a) => [a.id, a])) };
   const endFrame = secondsToFrames((narrationEndSec ?? narration.probe.durationSec) + 1, settings.frameRate);
   const fixes = autoFix(built.sequence, mediaMap, endFrame);
@@ -274,6 +342,7 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     shots: built.shots,
     style: {},
     narrationMediaId: narration.id,
+    narrationFormat,
     voice: voice && {
       mediaId: voice.mediaId,
       originalId: voice.originalId,
@@ -281,9 +350,11 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       before: { noiseFloorDb: voice.before.noiseFloorDb, snrDb: voice.before.snrDb, humHz: voice.before.humHz, lufs: voice.beforeLufs },
       after: { noiseFloorDb: voice.after.noiseFloorDb, snrDb: voice.after.snrDb, humHz: voice.after.humHz, lufs: voice.afterLufs },
       latencyMs: voice.latencyMs,
+      swappable: voice.swappable,
     },
   };
-  const qc = runQc(built.sequence, mediaMap, req.prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame, offScript: alignment.offScript?.filter((o) => o !== tail) });
+  const qc = runQc(built.sequence, mediaMap, prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame, offScript: alignment.offScript?.filter((o) => o !== tail) });
+  if (tightened) qc.issues.push({ severity: 'info', code: 'pauses', message: `Pauses resserrées : ${tightened.pauses} pause(s) raccourcie(s), ${tightened.removedSec.toFixed(1)} s retirées (copie dérivée ; décochez l’option et régénérez pour revenir au rythme d’origine)` });
   if (tail) qc.issues.push({ severity: 'info', code: 'outtake-cut', message: tailNotes[0]!, frame: secondsToFrames(narrationEndSec!, settings.frameRate) });
   built.sequence.production.qcScore = qc.score;
   built.sequence.production.qcIssues = qc.issues;
@@ -291,12 +362,12 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
   // only media actually used by the edit are added to the project
   const used = new Set(built.sequence.tracks.flatMap((t) => t.clips.map((c) => c.mediaId)));
   const entities = [...new Set(built.beats.flatMap((b) => b.entities.filter((e) => e.kind !== 'unknown').map((e) => e.name)))];
-  progress(1, `QC score ${qc.score}/100`);
+  progress(1, `Contrôle qualité ${qc.score}/100`);
   void framesToSeconds;
   return {
     sequence: built.sequence,
     newMedia: [...scan.assets, ...built.generated, ...(narration !== original ? [narration] : [])].filter((a) => used.has(a.id)),
     timings: alignment.sentences.map((a) => ({ index: a.index, start: a.start, end: a.end, text: script.sentences[a.index]?.text ?? '' })),
-    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...voiceNotes, ...tailNotes, ...pcoreNotes], entities, voice, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
+    report: { sentences: script.sentences.length, beats: built.beats.length, shots: built.shots.length, alignment: { method: alignment.method, confidence: alignment.confidence }, fixes, scanErrors: scan.errors, notes: [...script.notes, ...voiceNotes, ...tailNotes, ...pcoreNotes], entities, voice, narrationFormat, scriptSource: fromVoice ? { kind: 'narration', title: fromVoice.title, sentences: fromVoice.sentences, sections: fromVoice.sections, markdown: fromVoice.markdown } : { kind: 'script' }, scriptImport: imported ? { title: imported.title, sections: imported.sectionTargets.length, repairs: imported.repairs.length } : undefined },
   };
 }

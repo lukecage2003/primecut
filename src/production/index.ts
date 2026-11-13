@@ -12,3 +12,6 @@ export * from './scriptImport';
 export * from './pacing';
 export * from './voiceChain';
 export * from './comicRefs';
+export * from './transcriptScript';
+export * from './narrationFormat';
+export * from './pauses';

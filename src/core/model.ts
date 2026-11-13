@@ -81,6 +81,8 @@ export interface MediaAsset {
   sfx?: SfxSpec;
   /** Processed copy of another media item (the original file is never modified). */
   derived?: { from: string; kind: 'voice-cleanup'; steps: string[] };
+  /** Comics format of a still (cover, page, double page, webtoon, manga…) detected at import. */
+  comic?: import('./comicFormat').ComicImageInfo;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
@@ -237,6 +239,19 @@ export interface ProductionMeta {
   narrationMediaId: string;
   /** Narration cleanup applied to this version (the clips can be switched back to the original). */
   voice?: ProductionVoice;
+  /** Detected (or forced) narration format and the direction changes it caused. */
+  narrationFormat?: ProductionNarrationFormat;
+}
+
+export interface ProductionNarrationFormat {
+  kind: string;
+  label: string;
+  forced: boolean;
+  detected: string;
+  confidence: number;
+  length: 'short' | 'standard' | 'documentaire';
+  evidence: string[];
+  changes: string[];
 }
 
 export interface VoiceMetrics {
@@ -253,6 +268,7 @@ export interface ProductionVoice {
   before: VoiceMetrics;
   after: VoiceMetrics;
   latencyMs?: number;
+  swappable?: boolean;
 }
 
 export interface ExportSettings {

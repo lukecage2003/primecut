@@ -145,10 +145,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     return out;
   });
   ipcMain.handle('media:thumbnail', (_e, projectFile: string, asset: MediaAsset) =>
-    orchestrator.submit({ type: 'thumbnail', label: `Thumbnail · ${asset.name}`, priority: 'high', dedupeKey: `thumb:${asset.id}`, run: (c) => makeThumbnail(asset, cacheDirs(projectPaths(projectFile).cache), c.signal) }).promise,
+    orchestrator.submit({ type: 'thumbnail', label: `Vignette · ${asset.name}`, priority: 'high', dedupeKey: `thumb:${asset.id}`, run: (c) => makeThumbnail(asset, cacheDirs(projectPaths(projectFile).cache), c.signal) }).promise,
   );
   ipcMain.handle('media:peaks', (_e, projectFile: string, asset: MediaAsset) =>
-    orchestrator.submit({ type: 'waveform', label: `Waveform · ${asset.name}`, priority: 'high', dedupeKey: `peaks:${asset.id}`, run: (c) => makePeaks(asset, cacheDirs(projectPaths(projectFile).cache), c.signal) }).promise,
+    orchestrator.submit({ type: 'waveform', label: `Forme d’onde · ${asset.name}`, priority: 'high', dedupeKey: `peaks:${asset.id}`, run: (c) => makePeaks(asset, cacheDirs(projectPaths(projectFile).cache), c.signal) }).promise,
   );
   ipcMain.handle('media:needsProxy', (_e, asset: MediaAsset) => needsProxy(asset));
   ipcMain.handle('media:proxy', (_e, projectFile: string, asset: MediaAsset) =>
@@ -184,7 +184,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
         }
         const outcome: ExportOutcome = { output: req.output, encoder, frames: r.frames, durationSec: r.durationSec, width: r.width, height: r.height };
         exportResults.set(id, outcome);
-        c.progress(1, `Verified · ${r.frames} frames · ${r.width}×${r.height}`);
+        c.progress(1, `Vérifié · ${r.frames} images · ${r.width}×${r.height}`);
         return outcome;
       },
     });

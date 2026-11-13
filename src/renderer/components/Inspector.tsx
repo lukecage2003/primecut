@@ -34,7 +34,7 @@ function Slider({ label, value, min, max, step, fmt, onPreview, onCommit, testid
           if (draft !== null) onCommit(draft);
           setDraft(null);
         }}
-        onDoubleClick={() => onCommit(min <= 0 && max >= 0 && label !== 'Scale' && label !== 'Opacity' ? 0 : 1)}
+        onDoubleClick={() => onCommit(min <= 0 && max >= 0 && label !== 'Échelle' && label !== 'Opacité' ? 0 : 1)}
       />
       <span className="val">{fmt(v)}</span>
     </div>
@@ -76,7 +76,7 @@ export function Inspector() {
   return (
     <div className="panel glass" data-testid="inspector">
       <div className="panel-head">
-        <h3>Inspector</h3>
+        <h3>Inspecteur</h3>
       </div>
       <div className="panel-body">
         {trInfo && (
@@ -84,61 +84,61 @@ export function Inspector() {
             <div className="section-title">Transition · {trInfo.track.name}</div>
             <dl className="kv">
               <dt>Type</dt>
-              <dd>Cross dissolve</dd>
-              <dt>Duration</dt>
+              <dd>Fondu enchaîné</dd>
+              <dt>Durée</dt>
               <dd>{tc(trInfo.tr.duration)} ({trInfo.tr.duration} f)</dd>
-              <dt>Max (handles)</dt>
+              <dt>Max (marges)</dt>
               <dd>{trInfo.max} f</dd>
             </dl>
             <Slider
-              label="Duration"
+              label="Durée"
               value={trInfo.tr.duration}
               min={2}
               max={Math.max(2, trInfo.max)}
               step={1}
               fmt={(v) => `${(v / fps).toFixed(2)}s`}
               onPreview={(v) => previewEdit((s, m) => void setTransitionDuration(s, m, trInfo.tr.id, v))}
-              onCommit={(v) => (clearPreview(), edit('Transition duration', (s, m) => setTransitionDuration(s, m, trInfo.tr.id, v)))}
+              onCommit={(v) => (clearPreview(), edit('Durée de transition', (s, m) => setTransitionDuration(s, m, trInfo.tr.id, v)))}
             />
             <button className="btn danger" onClick={() => deleteSelectedTransition()}>
-              Remove transition
+              Supprimer la transition
             </button>
           </div>
         )}
         {!primary && !trInfo && seq.production && <ProductionReport />}
         {!primary && !trInfo && !seq.production && (
           <div className="insp">
-            <div className="section-title">Sequence</div>
+            <div className="section-title">Séquence</div>
             <dl className="kv">
-              <dt>Name</dt>
+              <dt>Nom</dt>
               <dd>{seq.name}</dd>
-              <dt>Frame size</dt>
+              <dt>Taille d'image</dt>
               <dd>{seq.settings.width}×{seq.settings.height}</dd>
-              <dt>Frame rate</dt>
+              <dt>Images/s</dt>
               <dd>{(rate.num / rate.den).toFixed(3)} ({rate.num}/{rate.den})</dd>
               <dt>Audio</dt>
               <dd>{seq.settings.sampleRate} Hz stereo</dd>
               <dt>Clips</dt>
               <dd>{seq.tracks.reduce((n, t) => n + t.clips.length, 0)}</dd>
-              <dt>Media</dt>
+              <dt>Médias</dt>
               <dd>{Object.keys(project.media).length}</dd>
             </dl>
-            <div className="tiny">Select a clip to edit its properties.</div>
+            <div className="tiny">Sélectionnez un clip pour modifier ses propriétés.</div>
           </div>
         )}
         {primary && (
           <div className="insp">
             <div className="section-title">Clip</div>
             <dl className="kv">
-              <dt>Name</dt>
+              <dt>Nom</dt>
               <dd title={primary.clip.name}>{primary.clip.name}</dd>
-              <dt>Start</dt>
+              <dt>Début</dt>
               <dd data-testid="insp-start">{tc(primary.clip.start)}</dd>
-              <dt>Duration</dt>
+              <dt>Durée</dt>
               <dd data-testid="insp-duration">{tc(primary.clip.duration)}</dd>
-              <dt>Source in</dt>
+              <dt>Entrée source</dt>
               <dd>{primary.clip.sourceIn.toFixed(3)} s</dd>
-              <dt>Media</dt>
+              <dt>Médias</dt>
               <dd title={project.media[primary.clip.mediaId]?.path}>{project.media[primary.clip.mediaId]?.path ?? 'missing'}</dd>
             </dl>
             <div className="row">
@@ -147,23 +147,23 @@ export function Inspector() {
                   type="checkbox"
                   checked={primary.clip.enabled}
                   onChange={(e) => {
-                    for (const c of clips) setProps(c.clip.id, { enabled: e.target.checked }, e.target.checked ? 'Enable clip' : 'Disable clip', true);
+                    for (const c of clips) setProps(c.clip.id, { enabled: e.target.checked }, e.target.checked ? 'Activer le clip' : 'Désactiver le clip', true);
                   }}
                 />
-                Enabled
+                Activé
               </label>
               <div className="spacer" />
               {primary.clip.linkId && (
-                <button className="btn ghost" onClick={() => edit('Unlink', (s) => unlinkClips(s, [primary.clip.id]))}>
-                  Unlink A/V
+                <button className="btn ghost" onClick={() => edit('Délier', (s) => unlinkClips(s, [primary.clip.id]))}>
+                  Délier image/son
                 </button>
               )}
             </div>
-            <div className="section-title">Fades</div>
+            <div className="section-title">Fondus</div>
             {(['fadeIn', 'fadeOut'] as const).map((k) => (
               <Slider
                 key={k}
-                label={k === 'fadeIn' ? 'Fade in' : 'Fade out'}
+                label={k === 'fadeIn' ? 'Fondu d’entrée' : 'Fondu de sortie'}
                 testid={`insp-${k}`}
                 value={primary.clip[k]}
                 min={0}
@@ -171,20 +171,20 @@ export function Inspector() {
                 step={1}
                 fmt={(v) => `${(v / fps).toFixed(2)}s`}
                 onPreview={(v) => previewEdit((s) => setClipFades(s, primary.clip.id, { [k]: v }))}
-                onCommit={(v) => (clearPreview(), edit(k === 'fadeIn' ? 'Fade in' : 'Fade out', (s) => setClipFades(s, primary.clip.id, { [k]: v })))}
+                onCommit={(v) => (clearPreview(), edit(k === 'fadeIn' ? 'Fondu d’entrée' : 'Fondu de sortie', (s) => setClipFades(s, primary.clip.id, { [k]: v })))}
               />
             ))}
             {video && project.media[video.clip.mediaId]?.generator && <VisualEditor mediaId={video.clip.mediaId} />}
             {video && (
               <>
-                <div className="section-title">Transform</div>
+                <div className="section-title">Transformation</div>
                 {(
                   [
-                    ['Scale', 'scale', 0.1, 4, 0.01, (v: number) => `${Math.round(v * 100)}%`],
+                    ['Échelle', 'scale', 0.1, 4, 0.01, (v: number) => `${Math.round(v * 100)}%`],
                     ['Position X', 'x', -seq.settings.width, seq.settings.width, 1, (v: number) => `${Math.round(v)}`],
                     ['Position Y', 'y', -seq.settings.height, seq.settings.height, 1, (v: number) => `${Math.round(v)}`],
                     ['Rotation', 'rotation', -180, 180, 0.5, (v: number) => `${v.toFixed(1)}°`],
-                    ['Opacity', 'opacity', 0, 1, 0.01, (v: number) => `${Math.round(v * 100)}%`],
+                    ['Opacité', 'opacity', 0, 1, 0.01, (v: number) => `${Math.round(v * 100)}%`],
                   ] as const
                 ).map(([label, key, min, max, step, fmt]) => (
                   <Slider
@@ -201,24 +201,24 @@ export function Inspector() {
                   />
                 ))}
                 <div className="insp-row">
-                  <label>Background</label>
-                  <select className="input" value={video.clip.fill ?? 'none'} onChange={(e) => setProps(video.clip.id, { fill: e.target.value as 'none' | 'blur' }, 'Background fill', true)}>
-                    <option value="none">Black</option>
-                    <option value="blur">Blurred image</option>
+                  <label>Fond</label>
+                  <select className="input" value={video.clip.fill ?? 'none'} onChange={(e) => setProps(video.clip.id, { fill: e.target.value as 'none' | 'blur' }, 'Remplissage du fond', true)}>
+                    <option value="none">Noir</option>
+                    <option value="blur">Image floutée</option>
                   </select>
                   <span />
                 </div>
                 <div className="insp-row">
-                  <label>Motion</label>
-                  <select className="input" data-testid="insp-motion" value={video.clip.motion?.kind ?? 'none'} onChange={(e) => setProps(video.clip.id, { motion: { kind: e.target.value as never, amount: e.target.value === 'none' ? 0 : video.clip.motion?.amount || 0.12 } }, 'Camera motion', true)}>
+                  <label>Mouvement</label>
+                  <select className="input" data-testid="insp-motion" value={video.clip.motion?.kind ?? 'none'} onChange={(e) => setProps(video.clip.id, { motion: { kind: e.target.value as never, amount: e.target.value === 'none' ? 0 : video.clip.motion?.amount || 0.12 } }, 'Mouvement de caméra', true)}>
                     {['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down'].map((k) => (
                       <option key={k} value={k}>{k}</option>
                     ))}
                   </select>
                   <span />
                 </div>
-                <button className="btn ghost" onClick={() => setProps(video.clip.id, { transform: { ...DEFAULT_TRANSFORM } }, 'Reset transform', true)}>
-                  Reset transform
+                <button className="btn ghost" onClick={() => setProps(video.clip.id, { transform: { ...DEFAULT_TRANSFORM } }, 'Réinitialiser', true)}>
+                  Réinitialiser
                 </button>
               </>
             )}
@@ -234,7 +234,7 @@ export function Inspector() {
                   step={0.5}
                   fmt={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`}
                   onPreview={(v) => setProps(audio.clip.id, { gainDb: v }, 'Gain', false)}
-                  onCommit={(v) => setProps(audio.clip.id, { gainDb: v }, 'Set gain', true)}
+                  onCommit={(v) => setProps(audio.clip.id, { gainDb: v }, 'Régler le gain', true)}
                 />
                 <DuckControl seq={seq} trackId={audio.track.id} />
               </>
@@ -254,27 +254,51 @@ function ProductionReport() {
   const sec = (f: number) => (f * rate.den) / rate.num;
   return (
     <div className="insp" data-testid="production-report">
-      <div className="section-title">Generated · v{p.version}</div>
+      <div className="section-title">Version générée · v{p.version}</div>
       <dl className="kv">
-        <dt>QC score</dt>
+        <dt>Score qualité (technique)</dt>
         <dd data-testid="qc-score">{p.qcScore}/100</dd>
-        <dt>Sync</dt>
-        <dd>{p.alignment.method === 'transcript' ? 'word-level' : 'pauses'} · {Math.round(p.alignment.confidence * 100)}%</dd>
-        <dt>Shots</dt>
+        <dt>Synchro</dt>
+        <dd>{p.alignment.method === 'transcript' ? 'mot à mot' : 'pauses'} · {Math.round(p.alignment.confidence * 100)}%</dd>
+        <dt>Plans</dt>
         <dd>{p.shots.length} ({p.shots.filter((s) => s.quality === 'strong').length} specific)</dd>
       </dl>
       <div className="row">
-        <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Regenerate…</button>
-        <button className="btn ghost" onClick={() => void learnFromEdits()} title="Adapt pacing, motion and transitions to how you edited this version">Learn from my edits</button>
+        <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Régénérer…</button>
+        <button className="btn ghost" onClick={() => void learnFromEdits()} title="Adapter rythme, mouvements et transitions à vos retouches de cette version">Apprendre de mes retouches</button>
       </div>
+      {p.narrationFormat && (
+        <div data-testid="narration-format">
+          <div className="section-title">Type de narration</div>
+          <dl className="kv">
+            <dt>Type</dt>
+            <dd>
+              {p.narrationFormat.label}
+              {p.narrationFormat.forced ? ' (choisi par vous)' : ` (détecté, ${Math.round(p.narrationFormat.confidence * 100)} %)`}
+            </dd>
+            <dt>Longueur</dt>
+            <dd>{p.narrationFormat.length === 'short' ? 'Short' : p.narrationFormat.length === 'documentaire' ? 'Documentaire' : 'Vidéo standard'}</dd>
+          </dl>
+          {p.narrationFormat.evidence.slice(0, 3).map((e) => (
+            <div key={e} className="tiny">
+              ◦ {e}
+            </div>
+          ))}
+          {p.narrationFormat.changes.map((c) => (
+            <div key={c} className="tiny">
+              ✓ {c}
+            </div>
+          ))}
+        </div>
+      )}
       {p.voice && <VoiceReport />}
-      {p.qcIssues.length > 0 && <div className="section-title">Quality control</div>}
+      {p.qcIssues.length > 0 && <div className="section-title">Contrôle qualité</div>}
       {p.qcIssues.map((i, k) => (
         <div key={k} className={`issue ${i.severity}`} onClick={() => i.frame !== undefined && setPlayhead(i.frame)}>
           {i.severity === 'error' ? '●' : i.severity === 'warning' ? '▲' : 'ℹ'} {i.message}
         </div>
       ))}
-      <div className="section-title">Shots — why each image</div>
+      <div className="section-title">Plans — pourquoi chaque image</div>
       {p.shots.map((s, k) => (
         <div key={k} className={`report-shot ${s.quality}`} onClick={() => setPlayhead(s.start)} title={s.text}>
           <b>{sec(s.start).toFixed(1)}s</b> · {s.mediaId ? media[s.mediaId]?.name : 'missing visual'}
@@ -298,23 +322,23 @@ function VoiceReport() {
   const fmt = (x: number | null) => (x == null ? '—' : x.toFixed(1));
   return (
     <div data-testid="voice-report">
-      <div className="section-title">Voice</div>
+      <div className="section-title">Voix</div>
       <dl className="kv">
-        <dt>Noise floor</dt>
+        <dt>Bruit de fond</dt>
         <dd>
           {fmt(v.before.noiseFloorDb)} → {fmt(v.after.noiseFloorDb)} dBFS
         </dd>
-        <dt>Voice / noise</dt>
+        <dt>Voix / bruit</dt>
         <dd>
           {fmt(v.before.snrDb)} → {fmt(v.after.snrDb)} dB
         </dd>
-        <dt>Loudness</dt>
+        <dt>Volume</dt>
         <dd>
           {fmt(v.before.lufs)} → {fmt(v.after.lufs)} LUFS
         </dd>
         {v.before.humHz && (
           <>
-            <dt>Hum</dt>
+            <dt>Ronflement</dt>
             <dd>{v.before.humHz} Hz removed</dd>
           </>
         )}
@@ -325,13 +349,15 @@ function VoiceReport() {
         </div>
       ))}
       <div className="row" style={{ marginTop: 6 }}>
-        {usingClean ? (
-          <button className="btn ghost" data-testid="voice-use-original" onClick={() => swap(v.mediaId, v.originalId, 'Use original narration')}>
-            Use the original recording
+        {v.swappable === false ? (
+          <span className="tiny">Les pauses ont été resserrées : pour revenir à l’enregistrement original, décochez l’option et régénérez.</span>
+        ) : usingClean ? (
+          <button className="btn ghost" data-testid="voice-use-original" onClick={() => swap(v.mediaId, v.originalId, 'Narration originale')}>
+            Utiliser l'enregistrement original
           </button>
         ) : (
-          <button className="btn ghost" data-testid="voice-use-clean" onClick={() => swap(v.originalId, v.mediaId, 'Use cleaned narration')}>
-            Use the cleaned voice
+          <button className="btn ghost" data-testid="voice-use-clean" onClick={() => swap(v.originalId, v.mediaId, 'Narration nettoyée')}>
+            Utiliser la voix nettoyée
           </button>
         )}
       </div>
@@ -365,25 +391,25 @@ function VisualEditor({ mediaId }: { mediaId: string }) {
       <div className="insp-row">
         <label>Style</label>
         <select className="input" value={g.style} disabled={busy} onChange={(e) => void apply({ style: e.target.value as never })}>
-          <option value="gold">Primestone gold</option>
-          <option value="hologram">Hologram</option>
-          <option value="crimson">Crimson</option>
+          <option value="gold">Or Primestone</option>
+          <option value="hologram">Hologramme</option>
+          <option value="crimson">Pourpre</option>
         </select>
         <span />
       </div>
       <div className="insp-row">
-        <label>Title</label>
+        <label>Titre</label>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== (g.title ?? '') && void apply({ title })} />
         <span />
       </div>
       <div className="insp-row">
-        <label>Subtitle</label>
+        <label>Sous-titre</label>
         <input className="input" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} onBlur={() => subtitle !== (g.subtitle ?? '') && void apply({ subtitle })} />
         <span />
       </div>
       <div className="insp-row">
-        <label>Variation</label>
-        <button className="btn ghost" disabled={busy} onClick={() => void apply({ seed: g.seed + 1 })}>Shuffle</button>
+        <label>Variante</label>
+        <button className="btn ghost" disabled={busy} onClick={() => void apply({ seed: g.seed + 1 })}>Mélanger</button>
         <span />
       </div>
     </div>
@@ -407,10 +433,10 @@ function DuckControl({ seq, trackId }: { seq: Sequence; trackId: string }) {
         <input
           type="checkbox"
           checked={!!duck}
-          onChange={(e) => set(e.target.checked ? { ...DEFAULT_DUCK, by: sources[0]!.id } : undefined, e.target.checked ? 'Enable ducking' : 'Disable ducking')}
+          onChange={(e) => set(e.target.checked ? { ...DEFAULT_DUCK, by: sources[0]!.id } : undefined, e.target.checked ? 'Activer l’atténuation' : 'Désactiver l’atténuation')}
         />
-        Lower this track under
-        <select className="input" style={{ width: 90 }} disabled={!duck} value={duck?.by ?? sources[0]!.id} onChange={(e) => duck && set({ ...duck, by: e.target.value }, 'Ducking source')}>
+        Baisser cette piste sous
+        <select className="input" style={{ width: 90 }} disabled={!duck} value={duck?.by ?? sources[0]!.id} onChange={(e) => duck && set({ ...duck, by: e.target.value }, 'Source d’atténuation')}>
           {sources.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -420,7 +446,7 @@ function DuckControl({ seq, trackId }: { seq: Sequence; trackId: string }) {
       </label>
       {duck && (
         <Slider
-          label="Ducking depth"
+          label="Profondeur d'atténuation"
           testid="insp-duck-depth"
           value={duck.depthDb}
           min={-24}
@@ -428,7 +454,7 @@ function DuckControl({ seq, trackId }: { seq: Sequence; trackId: string }) {
           step={0.5}
           fmt={(v) => `${v.toFixed(1)} dB`}
           onPreview={() => undefined}
-          onCommit={(v) => set({ ...duck, depthDb: v }, 'Ducking depth')}
+          onCommit={(v) => set({ ...duck, depthDb: v }, 'Profondeur d’atténuation')}
         />
       )}
     </div>

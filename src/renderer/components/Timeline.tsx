@@ -32,12 +32,12 @@ const RULER = 28;
 const SNAP_PX = 10;
 
 const TOOLS: { id: Tool; label: string; key: string; tip: string }[] = [
-  { id: 'select', label: '↖', key: 'V', tip: 'Selection — move clips, trim edges' },
-  { id: 'razor', label: '✂', key: 'C', tip: 'Razor — click a clip to cut it' },
-  { id: 'ripple', label: '⇤', key: 'B', tip: 'Ripple edit — trim and shift following clips' },
-  { id: 'roll', label: '⇹', key: 'N', tip: 'Rolling edit — move a cut between two clips' },
-  { id: 'slip', label: '⇆', key: 'Y', tip: 'Slip — change the source in/out of a clip' },
-  { id: 'slide', label: '⇋', key: 'U', tip: 'Slide — move a clip between its neighbours' },
+  { id: 'select', label: '↖', key: 'V', tip: 'Sélection — déplacer les clips, ajuster les bords' },
+  { id: 'razor', label: '✂', key: 'C', tip: 'Lame — cliquez sur un clip pour le couper' },
+  { id: 'ripple', label: '⇤', key: 'B', tip: 'Ripple — raccourcir et décaler les clips suivants' },
+  { id: 'roll', label: '⇹', key: 'N', tip: 'Roll — déplacer un raccord entre deux clips' },
+  { id: 'slip', label: '⇆', key: 'Y', tip: 'Slip — changer l’entrée/sortie source d’un clip' },
+  { id: 'slide', label: '⇋', key: 'U', tip: 'Slide — déplacer un clip entre ses voisins' },
 ];
 
 function displayTracks(seq: Sequence): Track[] {
@@ -128,27 +128,27 @@ export function Timeline() {
           </button>
         ))}
         <div className="sep" />
-        <button className="btn ghost" title="Split at playhead (S / Ctrl+K)" onClick={splitAtPlayhead} data-testid="split">
-          Split
+        <button className="btn ghost" title="Couper à la tête de lecture (S / Ctrl+K)" onClick={splitAtPlayhead} data-testid="split">
+          Couper
         </button>
-        <button className="btn ghost" title="Cross-dissolve at the cut nearest the playhead (Ctrl+D)" onClick={addDefaultTransition} data-testid="add-transition">
-          Dissolve
+        <button className="btn ghost" title="Fondu enchaîné au raccord le plus proche (Ctrl+D)" onClick={addDefaultTransition} data-testid="add-transition">
+          Fondu
         </button>
-        <button className={`btn ${snapping ? 'active' : 'ghost'}`} title="Snapping" onClick={() => store.setEditor((x) => ({ snapping: !x.snapping }))}>
-          Snap
+        <button className={`btn ${snapping ? 'active' : 'ghost'}`} title="Magnétisme" onClick={() => store.setEditor((x) => ({ snapping: !x.snapping }))}>
+          Magnétisme
         </button>
         <div className="sep" />
-        <button className="btn ghost" onClick={() => edit('Add video track', (s) => addTrack(s, 'video'))}>
-          + Video track
+        <button className="btn ghost" onClick={() => edit('Ajouter une piste vidéo', (s) => addTrack(s, 'video'))}>
+          + Piste vidéo
         </button>
-        <button className="btn ghost" onClick={() => edit('Add audio track', (s) => addTrack(s, 'audio'))}>
-          + Audio track
+        <button className="btn ghost" onClick={() => edit('Ajouter une piste audio', (s) => addTrack(s, 'audio'))}>
+          + Piste audio
         </button>
         <div className="spacer" />
         <span className="tiny mono">{framesToTimecode(duration, seq.settings.frameRate)}</span>
         <div className="sep" />
-        <button className="btn ghost" onClick={zoomToFit} title="Zoom to fit">
-          Fit
+        <button className="btn ghost" onClick={zoomToFit} title="Ajuster le zoom">
+          Ajuster
         </button>
         <input
           type="range"
@@ -198,7 +198,7 @@ export function Timeline() {
                 title={`${m.name} — ${framesToTimecode(m.frame, seq.settings.frameRate)} (double-click to remove)`}
                 style={{ left: m.frame * zoom, background: m.color }}
                 onClick={() => setPlayhead(m.frame)}
-                onDoubleClick={() => edit('Remove marker', (s) => removeMarker(s, m.id))}
+                onDoubleClick={() => edit('Supprimer le marqueur', (s) => removeMarker(s, m.id))}
               />
             ))}
           </div>
@@ -214,10 +214,10 @@ function TrackHead({ track }: { track: Track }) {
   return (
     <div className="tl-head" style={{ height: h }} data-testid={`head-${track.name}`}>
       <span className="tname">{track.name}</span>
-      <button className={`tbtn ${track.locked ? 'on' : ''}`} title={track.locked ? 'Unlock track' : 'Lock track'} onClick={() => toggle('locked')}>
+      <button className={`tbtn ${track.locked ? 'on' : ''}`} title={track.locked ? 'Déverrouiller la piste' : 'Verrouiller la piste'} onClick={() => toggle('locked')}>
         {track.locked ? '🔒' : '🔓'}
       </button>
-      <button className={`tbtn ${track.disabled ? 'on' : ''}`} title={track.kind === 'video' ? 'Toggle track output' : 'Mute track'} onClick={() => toggle('disabled')}>
+      <button className={`tbtn ${track.disabled ? 'on' : ''}`} title={track.kind === 'video' ? 'Afficher/masquer la piste' : 'Couper le son de la piste'} onClick={() => toggle('disabled')}>
         {track.kind === 'video' ? (track.disabled ? '◌' : '◉') : track.disabled ? 'M' : '♪'}
       </button>
     </div>
@@ -351,7 +351,7 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
     const tool = ed.tool;
     if (tool === 'razor') {
       const f = frameAt(e.clientX);
-      edit('Razor', (s) => splitAt(s, f, [clip.id]));
+      edit('Lame', (s) => splitAt(s, f, [clip.id]));
       return;
     }
     // selection
@@ -449,7 +449,7 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
     drag.current = null;
     clearPreview();
     if (!d || !d.moved) return;
-    const labels = { move: 'Move', 'trim-in': d.ripple ? 'Ripple trim' : 'Trim', 'trim-out': d.ripple ? 'Ripple trim' : 'Trim', roll: 'Roll edit', slip: 'Slip', slide: 'Slide' };
+    const labels = { move: 'Move', 'trim-in': d.ripple ? 'Ripple' : 'Trim', 'trim-out': d.ripple ? 'Ripple' : 'Trim', roll: 'Roll', slip: 'Slip', slide: 'Slide' };
     edit(labels[d.mode], op(d));
   };
 
