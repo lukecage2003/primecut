@@ -14,6 +14,10 @@ import {
   findRecovery,
   hardwareReport,
   diagnostics,
+  effectiveTrack,
+  loadMusicIndex,
+  scanMusicLibrary,
+  setMusicOverride,
   dependencyReport,
   readLogs,
   log,
@@ -91,6 +95,48 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     const st = loadSettings();
     await saveSettings({ transcriber: { ...st.transcriber, enabled: true, backend: 'whisper.cpp', modelPath: p } });
   };
+  // ---------- music library (user's own files, analysed locally, never modified) ----------
+  const musicIndexFile = () => path.join(app.getPath('userData'), 'music-index.json');
+  const musicDirs = () => loadSettings().musicLibrary?.dirs ?? [];
+  ipcMain.handle('music:list', async () => {
+    const idx = await loadMusicIndex(musicIndexFile());
+    const dirs = musicDirs();
+    const inLib = (p: string) => dirs.some((d) => p === d || p.startsWith(d + path.sep));
+    const tracks = Object.values(idx.tracks).filter((t) => inLib(t.path)).map(effectiveTrack).sort((a, b) => a.title.localeCompare(b.title));
+    return { dirs, updatedAt: Object.keys(idx.tracks).length ? idx.updatedAt : null, tracks };
+  });
+  ipcMain.handle('music:addFolder', async (e) => {
+    const r = await dialog.showOpenDialog(win(e)!, { title: 'Dossier de musique', properties: ['openDirectory', 'multiSelections'] });
+    if (r.canceled || !r.filePaths.length) return null;
+    const dirs = [...new Set([...musicDirs(), ...r.filePaths])];
+    await saveSettings({ musicLibrary: { dirs } });
+    return dirs;
+  });
+  ipcMain.handle('music:removeFolder', async (_e, d: string) => {
+    const dirs = musicDirs().filter((x) => x !== d);
+    await saveSettings({ musicLibrary: { dirs } });
+    return dirs;
+  });
+  ipcMain.handle('music:scan', () => {
+    const { id: taskId } = orchestrator.submit({
+      type: 'music-scan',
+      label: 'Analyse de la bibliothèque musicale',
+      priority: 'low',
+      dedupeKey: 'music-scan',
+      resources: { cpuSlots: 2 },
+      run: async (c) => {
+        const r = await scanMusicLibrary(musicDirs(), musicIndexFile(), { signal: c.signal, progress: (f, m) => c.progress(f, m) });
+        c.log(`${r.found} fichier(s), ${r.analysed} analysé(s), ${r.reused} inchangé(s), ${r.moved} déplacé(s), ${r.missing} introuvable(s), ${r.failed.length} en échec, ${r.seconds} s`);
+        for (const f of r.failed) c.log(`échec : ${path.basename(f.path)} — ${f.error}`);
+        c.progress(1, `${r.found} piste(s) · ${r.analysed} analysée(s)`);
+        return { found: r.found, analysed: r.analysed, failed: r.failed.length };
+      },
+    });
+    return { taskId };
+  });
+  ipcMain.handle('music:setOverride', async (_e, id: string, o) => {
+    await setMusicOverride(musicIndexFile(), id, o);
+  });
   ipcMain.handle('models:download', (_e, id: string) => {
     const m = MODEL_CATALOG.find((x) => x.id === id);
     if (!m) throw new Error(`Modèle inconnu : ${id}`);
@@ -127,7 +173,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const r =
       kind === 'modelDir'
-        ? await dialog.showOpenDialog(w, { title: 'Model folder (faster-whisper / CTranslate2)', properties: ['openDirectory'] })
+        ? await dialog.showOpenDialog(w, { title: 'Dossier du modèle (faster-whisper / CTranslate2)', properties: ['openDirectory'] })
         : await dialog.showOpenDialog(w, {
             title: kind === 'python' ? 'Python interpreter with faster-whisper' : kind === 'whisper' ? 'whisper.cpp executable (whisper-cli)' : 'ggml model file',
             properties: ['openFile'],
@@ -158,7 +204,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('project:searchMissing', (_e, assets: MediaAsset[], root: string) => searchForMissing(assets, root));
 
   ipcMain.handle('dialog:openProject', async (e) => {
-    const r = await dialog.showOpenDialog(win(e)!, { title: 'Open project', filters: [{ name: 'Primestone project', extensions: ['psproj'] }], properties: ['openFile'] });
+    const r = await dialog.showOpenDialog(win(e)!, { title: 'Ouvrir un projet', filters: [{ name: 'Projet Primestone', extensions: ['psproj'] }], properties: ['openFile'] });
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
   ipcMain.handle('dialog:chooseFolder', async (e, title: string, defaultPath?: string) => {
@@ -166,7 +212,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
   ipcMain.handle('dialog:importMedia', async (e) => {
-    const r = await dialog.showOpenDialog(win(e)!, { title: 'Import media', filters: MEDIA_FILTERS, properties: ['openFile', 'multiSelections'] });
+    const r = await dialog.showOpenDialog(win(e)!, { title: 'Importer des médias', filters: MEDIA_FILTERS, properties: ['openFile', 'multiSelections'] });
     return r.canceled ? [] : r.filePaths;
   });
   ipcMain.handle('dialog:exportTarget', async (e, name: string) => {

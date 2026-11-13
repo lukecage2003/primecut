@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import { ffmpegPaths, run } from './ffmpeg';
+import { ffmpegCapabilities } from './ffmpegCaps';
 import { MODEL_CATALOG, modelStatus } from './models';
 import { bundledWhisperCli } from './transcribe';
 
@@ -28,6 +29,14 @@ export async function dependencyReport(modelsDir?: string): Promise<DependencySt
     { name: 'FFmpeg', ...(await version(p.ffmpeg)) },
     { name: 'FFprobe', ...(await version(p.ffprobe)) },
   ];
+  if (out[0]!.ok) {
+    const c = await ffmpegCapabilities().catch((e) => ({ missing: [{ kind: 'erreur', name: (e as Error).message.slice(0, 120) }], licence: null, nonfree: false }));
+    out.push(
+      c.missing.length
+        ? { name: 'Fonctions FFmpeg', ok: false, detail: `manquantes : ${c.missing.slice(0, 8).map((m) => m.name).join(', ')}${c.missing.length > 8 ? '…' : ''} — certains exports ou effets échoueront` }
+        : { name: 'Fonctions FFmpeg', ok: true, detail: `toutes présentes (${c.licence ?? 'licence ?'}${c.nonfree ? ', non redistribuable' : ''})` },
+    );
+  }
   const w = bundledWhisperCli();
   out.push(
     w && fs.existsSync(w)

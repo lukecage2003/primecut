@@ -111,6 +111,14 @@ async function runSelfTest(outFile: string): Promise<number> {
     if (!v) throw new Error(`FFmpeg not runnable (${ffmpegPaths().ffmpeg})`);
     return `${v} · ${ffmpegPaths().ffmpeg}`;
   });
+  // every codec, filter and format Primestone uses must be in the bundled binary (non-regression gate)
+  await check('ffmpeg-capabilities', async () => {
+    const { ffmpegCapabilities } = await import('../engine/ffmpegCaps');
+    const c = await ffmpegCapabilities();
+    if (c.nonfree) throw new Error('binaire --enable-nonfree : non redistribuable');
+    if (c.missing.length) throw new Error(`manquant : ${c.missing.map((m) => `${m.kind}/${m.name}`).join(', ')}`);
+    return `complet · ${c.licence} · matériel : ${c.optionalPresent.join(', ') || 'aucun'}`;
+  });
   await check('encode', async () => {
     const out = path.join(os.tmpdir(), `primestone-self-test-${process.pid}.mp4`);
     await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=1', '-f', 'lavfi', '-i', 'sine=f=440:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out]);

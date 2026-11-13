@@ -17,3 +17,4 @@ export * from './narrationFormat';
 export * from './pauses';
 export * from './compare';
 export * from './disfluency';
+export * from './music';

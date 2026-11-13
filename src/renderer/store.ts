@@ -54,7 +54,7 @@ export interface AppState {
   tasks: Record<string, TaskInfo>;
   toasts: Toast[];
   modal: ModalSpec | null;
-  overlay: null | 'export' | 'settings' | 'tasks' | 'production' | 'pcore';
+  overlay: null | 'export' | 'settings' | 'tasks' | 'production' | 'pcore' | 'music';
 }
 
 type Listener = () => void;

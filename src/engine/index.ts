@@ -14,3 +14,5 @@ export * from './scriptFile';
 export * from './models';
 export * from './deps';
 export * from './log';
+export * from './musicLibrary';
+export * from './ffmpegCaps';

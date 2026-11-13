@@ -1,6 +1,25 @@
 # Journal des modifications
 
 ## Non publié
+- **Bibliothèque musicale** (nouveau panneau « Musique ») :
+  - analyse locale de vos fichiers par FFmpeg : métadonnées, LUFS, dynamique, crête vraie, énergie,
+    tempo avec indice de confiance (valeur double ou moitié signalée en cas d'ambiguïté), brillance,
+    voix chantée probable, aptitude à boucler ;
+  - ambiances estimées par des règles expliquées, et corrigeables ;
+  - licences lues dans les balises, un fichier voisin ou le dossier, sinon « inconnue » ;
+  - doublons et pistes semblables, historique d'utilisation ;
+  - index persistant et incrémental : un fichier inchangé n'est pas réanalysé, un fichier déplacé est
+    reconnu, l'écriture est atomique avec points de reprise. Originaux jamais modifiés.
+  - Une piste de 3 min est analysée en 2,2 s.
+- **Contrôle des capacités de FFmpeg** : tous les codecs, filtres et formats utilisés, et absence de
+  `nonfree`. Il est vérifié dans l'auto-test de l'installation et dans Réglages → Dépendances.
+- **FFmpeg minimal reproductible, étape 1** : sources figées, script de compilation croisée vers Windows
+  et workflow séparé avec tests de non-régression. Il ne remplace pas le binaire livré.
+- **Dossier d'écoute des hésitations** : extraits avec identifiants stables, contrôles aléatoires, page
+  d'annotation hors ligne, calcul de la précision, du rappel et des fausses alarmes (`scripts/eval/`).
+- **Interface « verre »** inspirée du matériau d'Apple : verre plus épais, reflet en bordure, contrôles
+  en capsule, rayons concentriques, en mode sombre et clair.
+- Titres de fenêtre restants traduits en français.
 - **Hésitations et répétitions** (Voice Studio) : les « euh », « hum » et les mots répétés (« le le »,
   « c'est un c'est un ») sont repérés dans la transcription et signalés dans le contrôle qualité avec
   leur instant. Nouvelle option « Couper les « euh » et les répétitions » (désactivée par défaut) :

@@ -82,6 +82,13 @@ const api: PrimestoneApi = {
       return () => ipcRenderer.removeListener('tasks:changed', l);
     },
   },
+  music: {
+    list: () => invoke('music:list'),
+    addFolder: () => invoke('music:addFolder'),
+    removeFolder: (d) => invoke('music:removeFolder', d),
+    scan: () => invoke('music:scan'),
+    setOverride: (id, o) => invoke('music:setOverride', id, o),
+  },
   system: {
     hardware: () => invoke('system:hardware'),
     saveDiagnostics: () => invoke('system:saveDiagnostics'),

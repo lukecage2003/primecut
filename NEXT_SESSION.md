@@ -10,18 +10,17 @@ Branche : `claude/gallant-hawking-c8govj`. Avant tout : `npm ci && npm test` (13
   2 + 11 + 3 fausses alarmes (fins de phrase, listes, « oh lala lala »). Après correction : 0 + 1 + 0 ;
   le seul cas restant, « de de », est plausible. Whisper n'a écrit aucun « euh ».
 
-## Prochain lot, dans l'ordre
-1. P0 6.2 : recommandations dans le diagnostic (mémoire, encodeur, espace libre → niveau de qualité conseillé).
-2. P1 Voice Studio (suite) : les hésitations que Whisper n'écrit pas (VAD silero, accord requis),
-   respirations, comparaison de prises. Fait : hésitations et répétitions écrites (`production/disfluency.ts`).
-3. P1 Music Intelligence : `production/music.ts` (énergie, tempo par FFmpeg), choix par section, ducking.
-4. Keyframes (`core/keyframes`).
-
-## Études du 13/11 (décisions demandées)
-- `docs/ETUDE_HESITATIONS.md` : Silero VAD ne détecte pas les « euh » (activité vocale seulement) ; détecteur acoustique prototypé ; précision et rappel non mesurables sans référence annotée.
-- `docs/ETUDE_FFMPEG.md` : recommandation B, un FFmpeg minimal compilé depuis des sources figées.
-- `docs/CONCEPTION_MUSIQUE.md` : choix et critères d'acceptation du lot musique.
+## Prochain lot, dans l'ordre (voir ROADMAP_MASTER.md, chemin critique)
+1. FFmpeg minimal : lire le 1er passage du workflow « FFmpeg minimal », épingler les empreintes
+   relevées (RECORDED.json), puis étape 2 (libass et sa pile, AMF, libvpl) jusqu'à 0 capacité manquante.
+   Ensuite : comparaison des exports avec le binaire BtbN.
+2. Musique dans la production : cible par section, score, transitions sur pauses, Remplacer/Verrouiller
+   (`docs/CONCEPTION_MUSIQUE.md` §3 à 6).
+3. EDG (`docs/ARCHITECTURE_CIBLE.md` §3.1) : à présenter avant de le coder (modification architecturale).
+4. Dès réception : vos pistes musicales (validation réelle) et vos annotations (`annotation/…/annotate.html`,
+   puis `npx tsx scripts/eval/hesitation-score.ts annotation/narration-spidey`).
 
 ## En attente de votre décision
-- Archiver le build FFmpeg dans une release GitHub de Primestone pour l'épingler (publication).
-- Modèle VAD silero (≈ 2 Mo, MIT) : téléchargement avec consentement comme les modèles whisper.
+- Modèles pour la compréhension visuelle (OCR, embeddings) et, en option, un LLM local : liste et licences
+  dans `docs/ARCHITECTURE_CIBLE.md` §3.3 ; rien n'est téléchargé sans accord.
+- Publication d'une release FFmpeg (après l'étape 2 et la non-régression).

@@ -44,6 +44,8 @@ export interface AppSettings {
   projectsDir: string;
   /** Optional local speech recognition for word-level sync (off until the user configures it). */
   transcriber: TranscriberConfig;
+  /** Folders of the user's own music library (analysed locally, never modified). */
+  musicLibrary?: { dirs: string[] };
   /** P-CORE appearance / reactions / placement (brand-wide). */
   pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings>; /** Render quality of P-CORE clips in productions (default 'high'). */ quality?: import('../pcore/quality').PCoreQuality };
 }
@@ -122,6 +124,15 @@ export interface PrimestoneApi {
     pick(kind: 'python' | 'whisper' | 'modelDir' | 'modelFile'): Promise<string | null>;
   };
   /** Local AI models: nothing is downloaded without an explicit request (size and licence shown first). */
+  music: {
+    /** Index of the music library (user corrections applied). */
+    list(): Promise<{ dirs: string[]; updatedAt: string | null; tracks: MusicTrackView[] }>;
+    addFolder(): Promise<string[] | null>;
+    removeFolder(dir: string): Promise<string[]>;
+    /** Analyses new or changed files as a task (unchanged files are reused). */
+    scan(): Promise<{ taskId: string }>;
+    setOverride(id: string, overrides: { moods?: string[]; energy?: string } | null): Promise<void>;
+  };
   models: {
     list(): Promise<{ catalog: import('../engine/models').ModelEntry[]; status: import('../engine/models').ModelStatus[]; dir: string; bundledEngine: boolean }>;
     download(id: string): Promise<{ taskId: string }>;
@@ -202,3 +213,5 @@ export const MEDIA_SCHEME = 'pmedia';
 export function mediaUrl(absPath: string): string {
   return `${MEDIA_SCHEME}://local/${encodeURIComponent(absPath)}`;
 }
+
+export type MusicTrackView = ReturnType<typeof import('../engine/musicLibrary').effectiveTrack>;

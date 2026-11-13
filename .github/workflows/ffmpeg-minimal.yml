@@ -1,0 +1,35 @@
+# Primestone minimal FFmpeg (docs/ETUDE_FFMPEG.md, option B). Separate from the main CI: it never
+# replaces the FFmpeg shipped in the installer. Builds from pinned sources, then runs the non-regression
+# checks on Windows with this binary. Nothing is published.
+name: FFmpeg minimal
+on:
+  workflow_dispatch:
+  push:
+    paths: ['scripts/ffmpeg-minimal/**', '.github/workflows/ffmpeg-minimal.yml']
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y mingw-w64 nasm cmake ninja-build jq pkg-config
+      - run: scripts/ffmpeg-minimal/build.sh out
+      - uses: actions/upload-artifact@v4
+        with: { name: ffmpeg-minimal-win64, path: out, retention-days: 30 }
+  check-windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: ffmpeg-minimal-win64, path: ffmin }
+      - name: Capabilities (every codec, filter and format Primestone uses)
+        run: npx vitest run tests/integration/ffmpegCaps.test.ts
+        env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\ffmin\bin' }
+      - name: Full unit + integration suite with this binary (non-regression)
+        if: always()
+        run: npm test
+        env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\ffmin\bin' }

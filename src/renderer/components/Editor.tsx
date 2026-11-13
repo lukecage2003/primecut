@@ -10,6 +10,7 @@ import { MediaLibrary } from './MediaLibrary';
 import { TaskPanel } from './Overlays';
 import { SettingsPanel } from './Settings';
 import { ProductionPanel } from './ProductionPanel';
+import { MusicLibrary } from './MusicLibrary';
 import { PCoreStudio } from './PCoreStudio';
 import { Timeline } from './Timeline';
 import { Viewer } from './Viewer';
@@ -19,7 +20,7 @@ const TOOL_KEYS: Record<string, Tool> = { v: 'select', c: 'razor', b: 'ripple', 
 function onKey(ev: KeyboardEvent) {
   const t = ev.target as HTMLElement;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
-  if (store.state.modal || store.state.overlay === 'export' || store.state.overlay === 'settings' || store.state.overlay === 'production') return;
+  if (store.state.modal || store.state.overlay === 'export' || store.state.overlay === 'settings' || store.state.overlay === 'production' || store.state.overlay === 'music') return;
   const e = store.state.editor;
   if (!e) return;
   const mod = ev.ctrlKey || ev.metaKey;
@@ -87,6 +88,9 @@ export function Editor() {
         <button className="btn primary" onClick={() => store.set({ overlay: 'production' })} data-testid="open-production" title="Script + narration → vidéo terminée">
           ✦ Script → Vidéo
         </button>
+        <button className="btn" onClick={() => store.set({ overlay: 'music' })} data-testid="open-music" title="Votre musique, analysée localement">
+          Musique
+        </button>
         <button className="btn" onClick={() => store.set({ overlay: 'pcore' })} data-testid="open-pcore" title="P-CORE : la présence Primestone qui réagit à la voix">
           P-CORE
         </button>
@@ -130,6 +134,7 @@ export function Editor() {
       {overlay === 'settings' && <SettingsPanel />}
       {overlay === 'production' && <ProductionPanel />}
       {overlay === 'pcore' && <PCoreStudio />}
+      {overlay === 'music' && <MusicLibrary />}
     </div>
   );
 }

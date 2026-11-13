@@ -65,3 +65,18 @@ dans `SOURCE.txt` et dans l'auto-test, sans rien publier).
    - Benchmark d'encodage sans écart de plus de 10 %.
 4. **Repli** : le script BtbN est conservé et peut être réactivé d'une seule option tant que B n'a pas
    passé ces tests.
+
+## 6. Avancement (13/11)
+- `src/engine/ffmpegCaps.ts` : contrôle des capacités (§3), testé et intégré à l'auto-test de
+  l'installateur. Le binaire BtbN actuel est vérifié à chaque CI Windows.
+- `scripts/ffmpeg-minimal/` : `sources.json` (sources figées, licences), `build.sh` (compilation
+  croisée MinGW, statique) et workflow séparé `.github/workflows/ffmpeg-minimal.yml` :
+  - compilation, puis suite complète sous Windows avec ce binaire ;
+  - le binaire de l'installateur n'est pas remplacé ;
+  - rien n'est publié.
+- Empreintes : x265 et nv-codec-headers sont épinglés (calculés ici). FFmpeg, libvpx, opus et zlib, ainsi
+  que le commit de x264, sont **relevés au premier passage CI** : la politique réseau de la session de
+  développement bloque leurs hôtes. Ils seront ensuite épinglés.
+- **Étape 2, pas encore faite** : libass, freetype, fribidi et harfbuzz (filtre `ass`, indispensable à la
+  typographie), en-têtes AMF, libvpl (QSV). Le contrôle des capacités signalera ces manques à l'étape 1 :
+  c'est attendu.

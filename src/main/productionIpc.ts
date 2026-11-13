@@ -119,7 +119,7 @@ export function registerProductionIpc() {
   });
   ipcMain.handle('production:readTextFile', async (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
-    const r = await dialog.showOpenDialog(w, { title: 'Open script', filters: [{ name: 'Script (PDF, text, Markdown)', extensions: SCRIPT_EXTENSIONS }], properties: ['openFile'] });
+    const r = await dialog.showOpenDialog(w, { title: 'Ouvrir un script', filters: [{ name: 'Script (PDF, texte, Markdown)', extensions: SCRIPT_EXTENSIONS }], properties: ['openFile'] });
     const f = r.canceled ? null : r.filePaths[0];
     if (!f) return null;
     const doc = await readScriptDocument(f);
@@ -140,7 +140,7 @@ export function registerProductionIpc() {
   );
   ipcMain.handle('production:chooseFolders', async (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
-    const r = await dialog.showOpenDialog(w, { title: 'Media folders', properties: ['openDirectory', 'multiSelections'] });
+    const r = await dialog.showOpenDialog(w, { title: 'Dossiers de médias', properties: ['openDirectory', 'multiSelections'] });
     return r.canceled ? [] : r.filePaths;
   });
 }

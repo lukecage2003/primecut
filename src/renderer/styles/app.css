@@ -272,3 +272,88 @@ textarea.script { flex: 1; min-height: 300px; height: 100%; padding: 12px; resiz
 .deps li { padding: 3px 0; overflow-wrap: anywhere; }
 .deps li.ok::first-letter { color: var(--ok, #3fb950); }
 .deps li.bad { color: var(--danger, #f85149); }
+
+/* ============ Liquid Glass layer (inspired by Apple's glass material; Primestone's own palette) ============
+   Thicker, more saturated translucency, a specular rim light on every glass surface, concentric
+   larger radii, capsule controls. Appended as a layer: removing this block restores the previous look. */
+:root { --radius: 20px; --radius-s: 12px; --rim: rgba(255, 255, 255, 0.32); --rim-2: rgba(255, 255, 255, 0.10); }
+[data-theme='dark'] {
+  --bg-grad:
+    radial-gradient(900px 520px at 8% -8%, rgba(255, 196, 0, 0.16), transparent 62%),
+    radial-gradient(800px 560px at 105% 8%, rgba(120, 90, 255, 0.13), transparent 60%),
+    radial-gradient(900px 600px at 60% 120%, rgba(0, 170, 255, 0.10), transparent 60%),
+    #07070a;
+  --glass: rgba(30, 30, 38, 0.46);
+  --glass-strong: rgba(34, 34, 44, 0.66);
+  --glass-hi: rgba(255, 255, 255, 0.075);
+  --stroke: rgba(255, 255, 255, 0.10);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.50), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+[data-theme='light'] {
+  --bg-grad:
+    radial-gradient(900px 520px at 8% -8%, rgba(255, 196, 0, 0.26), transparent 62%),
+    radial-gradient(800px 560px at 105% 8%, rgba(140, 110, 255, 0.18), transparent 60%),
+    radial-gradient(900px 600px at 60% 120%, rgba(0, 170, 255, 0.14), transparent 60%),
+    #eceef3;
+  --glass: rgba(255, 255, 255, 0.50);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --rim: rgba(255, 255, 255, 0.95);
+  --rim-2: rgba(255, 255, 255, 0.45);
+  --shadow: 0 24px 50px rgba(30, 30, 60, 0.14), 0 2px 6px rgba(30, 30, 60, 0.08);
+}
+.glass {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%), var(--glass);
+  backdrop-filter: blur(34px) saturate(190%);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--rim-2), inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.tasks.glass { position: fixed; }
+/* specular rim: bright top-left and bottom-right edges, like light caught in thick glass */
+.glass::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 0;
+  background: linear-gradient(140deg, var(--rim), transparent 28%, transparent 70%, var(--rim-2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.modal { background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 30%), var(--glass-strong); border-radius: 26px; padding: 26px; }
+.modal-back { background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(10px) saturate(120%); }
+.panel.glass { border-radius: 18px; }
+.panel-head { border-bottom-color: transparent; background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent); }
+/* capsule controls */
+.btn { height: 32px; padding: 0 14px; border-radius: 999px; background: var(--glass-hi); border-color: var(--stroke); box-shadow: inset 0 1px 0 var(--rim-2); backdrop-filter: blur(12px); }
+.btn.icon { width: 32px; }
+.btn.ghost { box-shadow: none; backdrop-filter: none; }
+.btn.primary { background: linear-gradient(180deg, #ffd84d, var(--accent) 45%, var(--accent-strong)); box-shadow: 0 6px 18px rgba(255, 180, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.65); }
+.input, select.input { border-radius: 12px; background: var(--glass-hi); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12); }
+.recent-item, .media-item { border-radius: 14px; }
+.toast { border-radius: 16px; }
+
+/* ---------- Music library ---------- */
+.modal.music-lib { width: 980px; max-width: calc(100vw - 48px); height: min(720px, calc(100vh - 48px)); }
+.small { font-size: 12px; }
+.btn.small { height: 28px; padding: 0 12px; font-size: 12px; }
+.input.small { height: 28px; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--glass-hi); border: 1px solid var(--stroke); font-size: 12px; cursor: default; }
+.chip.toggle { cursor: pointer; }
+.chip.toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.chip-x { border: 0; background: none; cursor: pointer; color: var(--text-2); padding: 0 0 0 2px; font-size: 14px; }
+.tag { font-style: normal; font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--glass-hi); border: 1px solid var(--stroke); color: var(--text-2); }
+.tag.warn { color: #ffb44d; border-color: rgba(255, 180, 77, 0.4); }
+.music-table { flex: 1; min-height: 0; overflow: auto; border-radius: 16px; border: 1px solid var(--stroke); background: rgba(0, 0, 0, 0.12); }
+.music-row { display: grid; grid-template-columns: 40px 1fr 60px 64px 110px 190px 120px; gap: 8px; align-items: center; padding: 6px 12px; min-height: 42px; cursor: pointer; }
+.music-row.head { position: sticky; top: 0; z-index: 1; min-height: 34px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); background: var(--glass-strong); backdrop-filter: blur(20px); cursor: default; }
+.music-item + .music-item { border-top: 1px solid var(--stroke); }
+.music-item:hover .music-row:not(.head) { background: var(--glass-hi); }
+.music-item.missing { opacity: 0.5; }
+.music-row .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.music-row .title small { color: var(--text-2); font-weight: 400; }
+.meter { display: inline-block; width: 22px; height: 6px; border-radius: 3px; margin-right: 6px; vertical-align: middle; background: var(--stroke-strong); }
+.meter.e-basse { background: linear-gradient(90deg, #5aa9ff 33%, var(--stroke-strong) 33%); }
+.meter.e-moyenne { background: linear-gradient(90deg, #ffc400 66%, var(--stroke-strong) 66%); }
+.meter.e-haute { background: #ff6a3d; }
+.lic { font-size: 12px; }
+.lic.unknown { color: #ffb44d; }
+.music-detail { padding: 4px 16px 14px 60px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: var(--text-2); }
+.music-detail ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }

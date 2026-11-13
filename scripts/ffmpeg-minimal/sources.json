@@ -1,0 +1,14 @@
+{
+  "note": "Sources exactes du FFmpeg minimal de Primestone. sha256 null = empreinte relevée au premier passage CI (record), puis épinglée ici. Rien n'est utilisé sans empreinte vérifiée une fois épinglée.",
+  "stage": 1,
+  "sources": [
+    { "name": "ffmpeg", "version": "8.1.3", "url": "https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz", "sha256": null, "license": "LGPL-2.1+ (GPL-3.0 avec --enable-gpl --enable-version3)", "licenseFiles": ["COPYING.GPLv3", "COPYING.LGPLv2.1", "LICENSE.md"] },
+    { "name": "x264", "version": "stable (commit relevé)", "git": "https://code.videolan.org/videolan/x264.git", "ref": "stable", "commit": null, "license": "GPL-2.0+", "licenseFiles": ["COPYING"] },
+    { "name": "x265", "version": "4.1", "url": "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz", "sha256": "a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29", "license": "GPL-2.0+", "licenseFiles": ["COPYING"] },
+    { "name": "libvpx", "version": "1.15.2", "url": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.2.tar.gz", "sha256": null, "license": "BSD-3-Clause + brevets (PATENTS)", "licenseFiles": ["LICENSE", "PATENTS"] },
+    { "name": "opus", "version": "1.5.2", "url": "https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz", "sha256": null, "license": "BSD-3-Clause", "licenseFiles": ["COPYING"] },
+    { "name": "zlib", "version": "1.3.1", "url": "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz", "sha256": null, "license": "Zlib", "licenseFiles": ["LICENSE"] },
+    { "name": "nv-codec-headers", "version": "13.0.19.0", "url": "https://github.com/FFmpeg/nv-codec-headers/releases/download/n13.0.19.0/nv-codec-headers-13.0.19.0.tar.gz", "sha256": "13da39edb3a40ed9713ae390ca89faa2f1202c9dda869ef306a8d4383e242bee", "license": "MIT", "licenseFiles": ["README"] }
+  ],
+  "stage2": ["libass + freetype + fribidi + harfbuzz (filtre ass, typographie)", "AMF headers", "libvpl (QSV)"]
+}

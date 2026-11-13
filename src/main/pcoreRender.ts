@@ -211,7 +211,7 @@ export function registerPCoreIpc() {
   ipcMain.handle('pcore:export', async (e, r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean; quality?: PCoreQuality }) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const fmt = PCORE_FORMATS.find((f) => f.id === r.format)!;
-    const pick = r.format === 'png-sequence' ? await dialog.showOpenDialog(w, { title: 'Folder for the PNG sequence', properties: ['openDirectory', 'createDirectory'] }) : await dialog.showSaveDialog(w, { title: 'Export P-CORE', defaultPath: `P-CORE${fmt.ext}`, filters: [{ name: fmt.label, extensions: [fmt.ext.slice(1)] }] });
+    const pick = r.format === 'png-sequence' ? await dialog.showOpenDialog(w, { title: 'Dossier de la séquence PNG', properties: ['openDirectory', 'createDirectory'] }) : await dialog.showSaveDialog(w, { title: 'Exporter P-CORE', defaultPath: `P-CORE${fmt.ext}`, filters: [{ name: fmt.label, extensions: [fmt.ext.slice(1)] }] });
     const target = 'filePaths' in pick ? (pick.canceled ? null : pick.filePaths[0] && path.join(pick.filePaths[0], 'P-CORE')) : pick.canceled ? null : pick.filePath;
     if (!target) return null;
     const settings = settingsNow();
