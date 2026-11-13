@@ -168,7 +168,7 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
 |---|---|---|---|---|---|
 | **P0-1** ✅ | Protocole média limité aux médias | `main/protocol.ts` | un fichier non média → 403 | E2E (lecture inchangée) | faible |
 | **P0-2** ✅ | Installateur en français | `package.json` (nsis) | installation silencieuse OK en CI | CI install/uninstall | textes non vérifiés visuellement |
-| **P0-3** | Épingler le build FFmpeg | `scripts/fetch-ffmpeg.mjs` | même SHA-256 à chaque build | CI | disponibilité des archives datées |
+| **P0-3** | Reproductibilité du build FFmpeg | `scripts/fetch-ffmpeg.mjs` | même SHA-256 à chaque build | CI | **constat** : BtbN ne conserve qu'environ un mois de builds datés (37 tags) — épingler un tag casserait le build après quelques semaines. Traçabilité actuelle : SHA-256 de l'archive + version exacte relevée par l'auto-test de chaque installateur. **Solution proposée, à valider par vous** : archiver le build FFmpeg retenu dans une *release* GitHub de Primestone (publication) puis épingler sur cette archive. |
 | **P1-1** ✅ | Transcription intégrée sans Python | `engine/transcribe.ts`, `engine/models.ts`, Réglages | modèle téléchargé avec accord, vérifié, utilisé | 3 intégration + reconnaissance réelle CI | qualité sur vraie voix à mesurer |
 | **P1-2** ✅ | Comparaison mesurée des versions | `production/compare.ts`, Inspecteur | tableau, verdicts techniques seulement | unitaire + E2E | — |
 | **P1-3** | Import d'archives CBZ/ZIP de planches | `engine/production.ts` (scan) | pages extraites dans l'ordre, cases détectées | intégration | archives volumineuses |
