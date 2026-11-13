@@ -213,6 +213,11 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
   masquage porte sur chaque valeur avant la sérialisation, accepte les deux séparateurs et ignore la
   casse sous Windows. Un test dédié a été ajouté.
 
+- Runs 42 et 43 : **rouges sous Windows**, à cause du nouveau contrôle des capacités et non de
+  l'application. Dans FFmpeg 8, `lavfi` est listé parmi les périphériques (`-devices`) et non parmi les
+  démultiplexeurs. Le contrôle l'a donc déclaré manquant à tort, alors que les tests qui utilisent
+  `lavfi` passaient. Corrigé : les périphériques sont inclus.
+
 ### Sécurité des dépendances
 - `npm audit --omit=dev` : **0 vulnérabilité** dans ce qui est livré.
 - Outils de développement : alerte « high » corrigée (Vite) ; 6 alertes « moderate » restantes

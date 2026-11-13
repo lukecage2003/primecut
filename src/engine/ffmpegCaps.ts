@@ -32,13 +32,15 @@ const names = (out: string, re: RegExp) => new Set([...out.matchAll(re)].map((m)
 export async function ffmpegCapabilities(): Promise<FfmpegCapabilities> {
   const bin = ffmpegPaths().ffmpeg;
   const q = async (a: string[]) => (await run(bin, ['-hide_banner', ...a], { collectStdout: true })).stdout.toString();
-  const [ver, enc, dec, fil, mux, demux] = await Promise.all([
+  const [ver, enc, dec, fil, mux, demux, dev] = await Promise.all([
     ffmpeg(['-version'], { collectStdout: true }).then((r) => r.stdout.toString()),
     q(['-encoders']),
     q(['-decoders']),
     q(['-filters']),
     q(['-muxers']),
     q(['-demuxers']),
+    // lavfi is an input *device* in FFmpeg 8 (listed by -devices, not -demuxers)
+    q(['-devices']).catch(() => ''),
   ]);
   const codecRe = /^\s[VAS][.A-Z]{5}\s+(\S+)/gm;
   const have = {
@@ -46,7 +48,7 @@ export async function ffmpegCapabilities(): Promise<FfmpegCapabilities> {
     decoders: names(dec, codecRe),
     filters: names(fil, /^\s[.TSC|]{2,3}\s+(\S+)/gm),
     muxers: new Set([...names(mux, /^\s+E\s+(\S+)/gm), ...names(mux, /^\s+DE\s+(\S+)/gm)].flatMap((n) => n.split(','))),
-    demuxers: new Set([...names(demux, /^\s+D\s+(\S+)/gm), ...names(demux, /^\s+DE\s+(\S+)/gm)].flatMap((n) => n.split(','))),
+    demuxers: new Set([...names(demux, /^\s+D\s+(\S+)/gm), ...names(demux, /^\s+DE\s+(\S+)/gm), ...names(dev, /^\s+D\s+(\S+)/gm), ...names(dev, /^\s+DE\s+(\S+)/gm)].flatMap((n) => n.split(','))),
   };
   const missing: FfmpegCapabilities['missing'] = [];
   for (const kind of ['encoders', 'decoders', 'filters', 'muxers', 'demuxers'] as const) for (const n of FFMPEG_REQUIREMENTS[kind]) if (!have[kind].has(n)) missing.push({ kind, name: n });
