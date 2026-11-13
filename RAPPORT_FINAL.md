@@ -17,8 +17,8 @@ complet** : plusieurs fonctions importantes du cahier des charges sont absentes 
 
 Il est produit par l'intégration continue à chaque version, **après** les tests :
 GitHub → `lukecage2003/primecut` → **Actions** → dernier run vert de la branche → **Artifacts** →
-`primestone-windows-installer`. Exemple vérifié : run 21,
-`https://github.com/lukecage2003/primecut/actions/runs/43312493476` (les artefacts GitHub expirent
+`primestone-windows-installer`. Dernier run vérifié : run 24 (toutes les modifications de cette livraison),
+`https://github.com/lukecage2003/primecut/actions/runs/43319022301` (les artefacts GitHub expirent
 après 90 jours ; chaque nouveau run en produit un neuf).
 
 Procédure d'installation : `INSTALLATION_WINDOWS.md`. Premiers pas : `DEMARRAGE_RAPIDE.md`. Manuel :
