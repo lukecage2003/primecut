@@ -99,9 +99,12 @@ function sectionTitle(sents: Sent[], index: EntityIndex, used: Set<string>): str
 }
 
 /** Primestone Markdown script built from the spoken words. */
+const FILLER_WORD = /^(euh|heu|euhm|heum|hum|hmm|mmh|hm)[.,!?…]*$/i;
+
 export function scriptFromTranscript(words: RecognisedWord[], opts: Partial<TranscriptScriptOptions> = {}, index = new EntityIndex()): { markdown: string; title: string; sentences: number; sections: number; outtakes: { start: number; end: number; text: string }[] } {
   const o = { ...DEFAULT_TRANSCRIPT_SCRIPT, ...opts };
-  let sents = sentencesFromTranscript(words, o);
+  // hesitations are never written into the script or the subtitles (they stay in the recording)
+  let sents = sentencesFromTranscript(words.filter((w) => !FILLER_WORD.test(w.text.trim())), o);
   if (!sents.length) return { markdown: '', title: '', sentences: 0, sections: 0, outtakes: [] };
   // retakes / outtakes: from the first retake marker in the last 20 % of the recording, the rest is
   // not narration (it stays in the recording; the edit leaves it out and QC reports it)

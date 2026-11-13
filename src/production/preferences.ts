@@ -48,6 +48,8 @@ export interface ProductionPreferences {
   autoDirection: boolean;
   /** Shorten long pauses of the narration (derived copy; off by default). */
   tightenPauses: boolean;
+  /** Remove hesitations ("euh") and immediate repetitions found in the transcript (derived copy; off by default). */
+  cutDisfluencies: boolean;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
 }
@@ -77,6 +79,7 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   voiceCleanup: true,
   autoDirection: true,
   tightenPauses: false,
+  cutDisfluencies: false,
   avoidRepeatWithin: 4,
 };
 

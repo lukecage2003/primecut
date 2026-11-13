@@ -175,6 +175,7 @@ export function ProductionPanel() {
                   ['sfx', 'Effets sonores'],
                   ['autoDirection', 'Adapter la réalisation au type de narration'],
                   ['tightenPauses', 'Resserrer les longues pauses'],
+                  ['cutDisfluencies', 'Couper les « euh » et les répétitions'],
                 ] as const
               ).map(([k, l]) => (
                 <label key={k} className="row" style={{ gap: 6 }}>

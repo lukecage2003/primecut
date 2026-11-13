@@ -29,6 +29,7 @@ import { fingerprintFile, importMediaFile } from './media';
 import { cleanVoice, renderTightened } from './voice';
 import { ARCHIVE_EXT, extractComicArchive } from './archive';
 import { planTighten, remapTime } from '../production/pauses';
+import { cutsFromKeep, detectDisfluencies, keepFromCuts, wordsAfterCuts } from '../production/disfluency';
 import { scriptFromTranscript } from '../production/transcriptScript';
 import { NARRATION_KINDS, type NarrationKind, detectNarrationFormat, directionFor, rankCard } from '../production/narrationFormat';
 import type { VoiceQuality } from '../production/voiceChain';
@@ -259,21 +260,30 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
       voiceNotes.push(`Nettoyage de la voix ignoré : ${(e as Error).message}`);
     }
   }
-  // optional pause tightening (long pauses shortened) → another derived copy; every time is remapped
+  // Voice Studio: hesitations and repetitions are always reported; long pauses and (opt-in) those
+  // mistakes are removed together in one derived copy; every time is remapped
   let transcript = req.transcript ?? null;
   let tightened: { pauses: number; removedSec: number } | null = null;
-  if (req.prefs.tightenPauses) {
-    const plan = planTighten(na.silences, narration.probe.durationSec);
-    if (plan.removedSec >= 0.5) {
-      progress(0.2, 'Resserrement des pauses');
-      const file = await renderTightened(narration, plan.keep, path.join(req.projectDir, 'Cache'), signal);
+  const disfluencies = transcript?.length ? detectDisfluencies(transcript) : [];
+  let disfluencyCut = 0;
+  if (req.prefs.tightenPauses || (req.prefs.cutDisfluencies && disfluencies.length)) {
+    const dur = narration.probe.durationSec;
+    const pausePlan = req.prefs.tightenPauses ? planTighten(na.silences, dur) : { keep: [{ start: 0, end: dur }], removedSec: 0, pauses: 0 };
+    const cuts = [...cutsFromKeep(pausePlan.keep, dur), ...(req.prefs.cutDisfluencies ? disfluencies : [])];
+    const keep = keepFromCuts(cuts, dur);
+    const removedSec = dur - keep.reduce((a, k) => a + k.end - k.start, 0);
+    if (removedSec >= 0.3) {
+      progress(0.2, 'Resserrement de la voix');
+      const file = await renderTightened(narration, keep, path.join(req.projectDir, 'Cache'), signal);
       const asset = await importMediaFile(file, req.projectDir, signal);
-      asset.name = `${original.name.replace(/\.[^.]+$/, '')} · pauses resserrées.wav`;
-      asset.derived = { from: original.id, kind: 'voice-cleanup', steps: [...(narration.derived?.steps ?? []), 'pauses'] };
+      const steps = [...(req.prefs.tightenPauses ? ['pauses'] : []), ...(req.prefs.cutDisfluencies ? ['disfluencies'] : [])];
+      asset.name = `${original.name.replace(/\.[^.]+$/, '')} · ${req.prefs.cutDisfluencies ? 'voix resserrée' : 'pauses resserrées'}.wav`;
+      asset.derived = { from: original.id, kind: 'voice-cleanup', steps: [...(narration.derived?.steps ?? []), ...steps] };
       narration = asset;
       na = await analyzeNarration(asset.path, { signal });
-      transcript = transcript?.map((w) => ({ ...w, start: remapTime(w.start, plan.keep), end: remapTime(w.end, plan.keep) })) ?? null;
-      tightened = { pauses: plan.pauses, removedSec: plan.removedSec };
+      transcript = transcript ? wordsAfterCuts(transcript, cutsFromKeep(keep, dur), (t) => remapTime(t, keep)) : null;
+      tightened = { pauses: pausePlan.pauses, removedSec: +removedSec.toFixed(3) };
+      disfluencyCut = req.prefs.cutDisfluencies ? disfluencies.length : 0;
       if (voice) voice = { ...voice, mediaId: asset.id, swappable: false };
     }
   }
@@ -388,7 +398,11 @@ export async function produceVideo(req: ProductionRequest, progress: (f: number,
     },
   };
   const qc = runQc(built.sequence, mediaMap, prefs, { alignmentConfidence: alignment.confidence, narrationEnd: endFrame, offScript: alignment.offScript?.filter((o) => o !== tail) });
-  if (tightened) qc.issues.push({ severity: 'info', code: 'pauses', message: `Pauses resserrées : ${tightened.pauses} pause(s) raccourcie(s), ${tightened.removedSec.toFixed(1)} s retirées (copie dérivée ; décochez l’option et régénérez pour revenir au rythme d’origine)` });
+  if (tightened) qc.issues.push({ severity: 'info', code: 'pauses', message: `Voix resserrée : ${tightened.pauses} pause(s) raccourcie(s)${disfluencyCut ? `, ${disfluencyCut} hésitation(s) ou répétition(s) coupée(s)` : ''}, ${tightened.removedSec.toFixed(1)} s retirées (copie dérivée ; décochez l’option et régénérez pour revenir à l’enregistrement d’origine)` });
+  if (disfluencies.length && !disfluencyCut) {
+    const list = disfluencies.slice(0, 6).map((d) => `« ${d.text} » à ${d.start.toFixed(1)} s`).join(', ');
+    qc.issues.push({ severity: 'info', code: 'disfluency', message: `${disfluencies.length} hésitation(s) ou répétition(s) entendue(s) : ${list}${disfluencies.length > 6 ? '…' : ''}. Cochez « Couper les « euh » et les répétitions » pour les retirer (copie dérivée, réversible).`, frame: secondsToFrames(disfluencies[0]!.start, settings.frameRate) });
+  }
   if (tail) qc.issues.push({ severity: 'info', code: 'outtake-cut', message: tailNotes[0]!, frame: secondsToFrames(narrationEndSec!, settings.frameRate) });
   built.sequence.production.qcScore = qc.score;
   built.sequence.production.qcIssues = qc.issues;

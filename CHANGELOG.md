@@ -1,6 +1,13 @@
 # Journal des modifications
 
 ## Non publié
+- **Hésitations et répétitions** (Voice Studio) : les « euh », « hum » et les mots répétés (« le le »,
+  « c'est un c'est un ») sont repérés dans la transcription et signalés dans le contrôle qualité avec
+  leur instant. Nouvelle option « Couper les « euh » et les répétitions » (désactivée par défaut) :
+  coupe dans une copie dérivée, l'enregistrement d'origine reste intact, le montage reste synchronisé.
+  Les doublons grammaticaux (« nous nous »), les intensifs (« très très »), les exclamations
+  (« oh lala lala »), les fins de phrase et les énumérations ne sont jamais pris pour des erreurs.
+  Les « euh » ne figurent plus dans un script reconstruit à partir de la voix ni dans les sous-titres.
 - **Journal technique** : fichier JSON par jour dans le dossier de l'application (`logs/`), catégories
   par module, niveaux, rotation (5 Mo, 14 jours), corrélation par tâche, dossier personnel remplacé
   par `~`. Enregistre le début et la fin de chaque tâche, les échecs de FFmpeg, les exceptions du

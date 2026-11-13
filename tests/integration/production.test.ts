@@ -264,6 +264,43 @@ describe('pause tightening', () => {
   }, 120000);
 });
 
+describe('hesitations and repetitions', () => {
+  it('reports them by default and, when asked, removes them in a derived copy with the edit kept in sync', async () => {
+    const d = tmpDir('ps-disf-');
+    const n = await makeNarration(d, SENTENCES, 0.6);
+    // word-timed transcript from the known sentence spans, with an "euh" and a doubled word inside sentence 2
+    const transcript = n.truth.flatMap((t, i) => {
+      const ws = SENTENCES[i]!.split(' ');
+      if (i === 1) ws.splice(2, 0, 'euh', ws[2]!);
+      const step = (t.end - t.start) / ws.length;
+      return ws.map((text, k) => ({ text, start: t.start + k * step, end: t.start + (k + 0.8) * step }));
+    });
+    const project = createProject('D', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const narr = await importMediaFile(n.file, d);
+    project.media[narr.id] = narr;
+    const base = { project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], transcript };
+    const reported = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false } });
+    const note = reported.sequence.production!.qcIssues.find((i) => i.code === 'disfluency')!;
+    expect(note.message).toMatch(/2 hésitation\(s\) ou répétition\(s\)/);
+    expect(note.message).toMatch(/« euh »/);
+    expect(reported.newMedia.some((m) => m.derived)).toBe(false); // nothing removed without consent
+
+    const cut = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: true } });
+    const clip = cut.sequence.tracks.flatMap((t) => t.clips).find((c) => cut.newMedia.find((m) => m.id === c.mediaId)?.derived)!;
+    const copy = cut.newMedia.find((m) => m.id === clip.mediaId)!;
+    expect(copy.name).toMatch(/voix resserrée/);
+    expect(copy.derived!.steps).toContain('disfluencies');
+    const removed = narr.probe.durationSec - copy.probe.durationSec;
+    expect(removed).toBeGreaterThan(0.2);
+    expect(removed).toBeLessThan(1.5);
+    expect(cut.sequence.production!.qcIssues.find((i) => i.code === 'pauses')!.message).toMatch(/2 hésitation/);
+    // sentences after the cut move earlier by the removed time; the ones before do not move
+    expect(Math.abs(cut.timings![0]!.start - n.truth[0]!.start)).toBeLessThan(0.3);
+    expect(Math.abs(cut.timings![2]!.start - (n.truth[2]!.start - removed))).toBeLessThan(0.3);
+    expect(fs.existsSync(n.file)).toBe(true); // the recording is untouched
+  }, 180000);
+});
+
 describe('comic archives (CBZ)', () => {
   it('extracts the pages in natural reading order, safely, and reads them like a folder of pages', async () => {
     const { scanMediaFolders } = await import('../../src/engine/production');
