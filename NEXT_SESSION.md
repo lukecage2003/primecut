@@ -17,6 +17,11 @@ Branche : `claude/gallant-hawking-c8govj`. Avant tout : `npm ci && npm test` (13
 3. P1 Music Intelligence : `production/music.ts` (énergie, tempo par FFmpeg), choix par section, ducking.
 4. Keyframes (`core/keyframes`).
 
+## Études du 13/11 (décisions demandées)
+- `docs/ETUDE_HESITATIONS.md` : Silero VAD ne détecte pas les « euh » (activité vocale seulement) ; détecteur acoustique prototypé ; précision et rappel non mesurables sans référence annotée.
+- `docs/ETUDE_FFMPEG.md` : recommandation B, un FFmpeg minimal compilé depuis des sources figées.
+- `docs/CONCEPTION_MUSIQUE.md` : choix et critères d'acceptation du lot musique.
+
 ## En attente de votre décision
 - Archiver le build FFmpeg dans une release GitHub de Primestone pour l'épingler (publication).
 - Modèle VAD silero (≈ 2 Mo, MIT) : téléchargement avec consentement comme les modèles whisper.
