@@ -3,6 +3,7 @@
  * matched against the media library, with an explanation for every choice.
  */
 import type { MediaAsset, MotionKind } from '../core/model';
+import { duplicateGroups } from '../core/phash';
 import type { AlignedSentence } from './align';
 import { type EntityMention, EntityIndex } from './entities';
 import type { ProductionPreferences } from './preferences';
@@ -73,9 +74,13 @@ export interface LibraryItem {
   issues: Set<string>;
   /** Comic reference read from the file name (series, volume, issues, year), when it has one. */
   ref?: ComicRef | null;
+  /** Id shared by near-identical copies of the same picture (repetition checks use it). */
+  same: string;
 }
 
 export function indexLibrary(assets: MediaAsset[], index = new EntityIndex()): LibraryItem[] {
+  // duplicate pictures (same image, other file/size/compression) count as one for repetitions
+  const same = duplicateGroups(assets.map((a) => ({ id: a.id, phash: a.phash, area: (a.probe.video?.width ?? 0) * (a.probe.video?.height ?? 0) })));
   return assets
     .filter((a) => a.kind === 'image' || (a.kind === 'video' && a.probe.video))
     .map((asset) => {
@@ -88,6 +93,7 @@ export function indexLibrary(assets: MediaAsset[], index = new EntityIndex()): L
         entityIds: new Set(ents.map((e) => e.entityId).filter((x): x is string => !!x)),
         issues: new Set([...label.matchAll(/(?:#|n°|no\.?|issue|num[eé]ro)\s?_?(\d{1,4})/gi)].map((m) => String(Number(m[1])))),
         ref: parseMediaRef(asset.name),
+        same: same.get(asset.id) ?? asset.id,
       };
     });
 }
@@ -187,9 +193,9 @@ export function chooseMedia(beat: Beat, library: LibraryItem[], recent: string[]
     if (owner !== undefined && owner !== beat.index && library.length > 2) continue; // reserved by an explicit visual hint elsewhere
     // don't spend, on a generic shot, the image the next beat specifically needs
     if (score === 0 && next && scoreItem(next, item).score > 0) adj -= 2;
-    if (library.length > 1 && recent.at(-1) === item.asset.id) continue; // never the same image twice in a row
-    if (window.includes(item.asset.id)) adj -= 4;
-    adj -= 0.3 * (usage.get(item.asset.id) ?? 0);
+    if (library.length > 1 && recent.at(-1) === item.same) continue; // never the same image twice in a row (duplicates included)
+    if (window.includes(item.same)) adj -= 4;
+    adj -= 0.3 * (usage.get(item.same) ?? 0);
     if (item.asset.rights && !['owned', 'user-provided', 'reusable'].includes(item.asset.rights.usage)) continue; // never auto-place unlicensed media
     if (!best || adj > best.score) best = { item, score: adj, reasons: r, quality: score > 0 ? 'strong' : 'weak' };
   }

@@ -304,3 +304,32 @@ describe('comic archives (CBZ)', () => {
     expect((await scanMediaFolders([lib], d, new Set())).assets).toHaveLength(3);
   }, 120000);
 });
+
+describe('duplicate pictures in the library', () => {
+  it('a resized, recompressed copy is recognised and never shown right after the original', async () => {
+    const { scanMediaFolders } = await import('../../src/engine/production');
+    const d = tmpDir('ps-dup-');
+    const lib = path.join(d, 'lib');
+    fs.mkdirSync(lib);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=1600x2400', '-frames:v', '1', path.join(lib, 'spider-man-cover.png')]);
+    await ffmpeg(['-v', 'error', '-i', path.join(lib, 'spider-man-cover.png'), '-vf', 'scale=800:1200', '-q:v', '8', path.join(lib, 'spider-man-cover-copie.jpg')]);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'mandelbrot=s=1600x2400', '-frames:v', '1', path.join(lib, 'spider-man-ville.png')]);
+    const scan = await scanMediaFolders([lib], d, new Set());
+    const { hamming } = await import('../../src/core');
+    const h = (n: string) => scan.assets.find((a) => a.name === n)!.phash!;
+    expect(hamming(h('spider-man-cover.png'), h('spider-man-cover-copie.jpg'))).toBeLessThanOrEqual(6);
+    expect(hamming(h('spider-man-cover.png'), h('spider-man-ville.png'))).toBeGreaterThan(12);
+    // a long passage about Spider-Man needs several shots: the copy never follows the original
+    const project = createProject('Dup', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const n = await makeNarration(d, ['Spider-Man veille sur la ville depuis les toits.', 'Spider-Man protège encore la ville cette nuit.', 'Spider-Man repart enfin vers les toits de la ville.']);
+    const narr = await importMediaFile(n.file, d);
+    project.media[narr.id] = narr;
+    const res = await produceVideo({ project, projectDir: d, script: 'Spider-Man veille sur la ville depuis les toits. Spider-Man protège encore la ville cette nuit. Spider-Man repart enfin vers les toits de la ville.', narrationMediaId: narr.id, mediaFolders: [lib], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 2, shotMin: 1, voiceCleanup: false, proceduralVisuals: false } });
+    const names = res.sequence.tracks[0]!.clips.map((c) => res.newMedia.find((m) => m.id === c.mediaId)?.name ?? '');
+    for (let i = 1; i < names.length; i++) {
+      const pair = [names[i - 1], names[i]].sort().join('+');
+      expect(pair).not.toBe('spider-man-cover-copie.jpg+spider-man-cover.png');
+    }
+    expect(names.length).toBeGreaterThanOrEqual(3);
+  }, 120000);
+});

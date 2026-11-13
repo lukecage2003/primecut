@@ -83,6 +83,8 @@ export interface MediaAsset {
   derived?: { from: string; kind: 'voice-cleanup'; steps: string[] };
   /** Comics format of a still (cover, page, double page, webtoon, manga…) detected at import. */
   comic?: import('./comicFormat').ComicImageInfo;
+  /** Perceptual fingerprint (dHash, 16 hex digits) used to recognise duplicate pictures. */
+  phash?: string;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */

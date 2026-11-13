@@ -199,8 +199,8 @@ export function buildSequence(input: BuildInput): BuildResult {
       if (a.kind === 'image' && v && c.motion.kind !== 'panels' && Math.abs(v.width / v.height - settings.width / settings.height) > 0.05) c.fill = 'blur';
       v1.clips.push(c);
       shots.push({ start: t, end: t + len, mediaId: a.id, beat: beat.index, quality: choice.quality, reasons: [...choice.reasons, ...(a.comic && a.comic.format !== 'illustration' ? [`format : ${COMIC_FORMAT_LABEL[a.comic.format]}${a.comic.manga ? ' manga, lecture de droite à gauche' : ''}${c.motion.kind === 'panels' ? ` · lue case par case (${c.motion.path?.length ?? 0} cases)` : ''}`] : []), ...(pace.label === 'neutral' ? [] : [`rythme : ${pace.label === 'calm' ? 'calme' : 'intense'}`])], text: beat.text });
-      recent.push(a.id);
-      usage.set(a.id, (usage.get(a.id) ?? 0) + 1);
+      recent.push(choice.item.same);
+      usage.set(choice.item.same, (usage.get(choice.item.same) ?? 0) + 1);
       t += len;
     }
   });

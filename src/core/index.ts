@@ -12,3 +12,4 @@ export * from './panels';
 export * from './generators';
 export * from './ducking';
 export * from './comicFormat';
+export * from './phash';

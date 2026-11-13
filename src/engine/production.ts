@@ -36,7 +36,7 @@ import { renderGenerator } from './generators';
 import { renderSfx } from './sfx';
 import { probeMedia } from './probe';
 import { ffmpeg } from './ffmpeg';
-import { classifyComicImage, detectPanels, orderPanels } from '../core';
+import { classifyComicImage, dHash, detectPanels, orderPanels } from '../core';
 
 /** Decodes a page at low resolution and runs panel detection (XY-cut on gutters). */
 export async function detectPagePanels(file: string, w: number, h: number, signal?: AbortSignal) {
@@ -46,6 +46,13 @@ export async function detectPagePanels(file: string, w: number, h: number, signa
   const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `scale=${W}:${H},format=gray`, '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
   const panels = detectPanels(new Uint8Array(stdout.buffer, stdout.byteOffset, W * H), W, H);
   return panels.length >= 2 ? panels : undefined;
+}
+
+/** Perceptual fingerprint of a picture (dHash on a 9×8 grey thumbnail). */
+export async function imageFingerprint(file: string, signal?: AbortSignal): Promise<string> {
+  const { stdout } = await ffmpeg(['-v', 'error', '-i', file, '-frames:v', '1', '-vf', 'scale=9:8:flags=area,format=gray', '-f', 'rawvideo', 'pipe:1'], { collectStdout: true, signal });
+  if (stdout.byteLength < 72) throw new Error('vignette incomplète');
+  return dHash(new Uint8Array(stdout.buffer, stdout.byteOffset, 72));
 }
 
 /** Mean colour saturation (0..1) of a 48×48 thumbnail: black & white pages are near 0. */
@@ -140,6 +147,7 @@ export async function scanMediaFolders(folders: string[], projectDir: string, kn
         const ar = v.width / v.height;
         if (ar < 0.87 || ar >= 1.25) a.panels = await detectPagePanels(a.path, v.width, v.height, signal).catch(() => undefined);
         const sat = await imageSaturation(a.path, signal).catch(() => null);
+        a.phash = await imageFingerprint(a.path, signal).catch(() => undefined);
         a.comic = classifyComicImage({ width: v.width, height: v.height, panels: a.panels, saturation: sat, name: a.name });
         // a wide picture is only read panel by panel when it really is a spread (3+ panels)
         if (ar >= 1.25 && a.comic.format !== 'double-page') a.panels = undefined;
