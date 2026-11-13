@@ -15,6 +15,8 @@
 - **Dépendances défaillantes** : Réglages affiche l'état de FFmpeg, FFprobe, whisper.cpp et des
   modèles, le nombre de problèmes des 7 derniers jours et un bouton vers le dossier des journaux.
 - Le rapport de diagnostic contient l'état des dépendances et les problèmes récents ; titre en français.
+- Correctif de confidentialité (Windows) : le dossier personnel restait visible dans le journal technique
+  (détecté par la CI, run 38), corrigé avant toute publication.
 - CI Windows : le test CBZ ne dépend plus de l'outil `zip` (runs 33–35 en échec, corrigé).
 
 ## 0.7.0

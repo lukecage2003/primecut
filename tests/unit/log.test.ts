@@ -23,6 +23,14 @@ describe('technical log', () => {
     expect(readLogs(1, 'warn').map((e) => e.msg)).toContain('échec');
   });
 
+  it('masks a Windows home folder in any separator and case (CI run 38: backslashes doubled in JSON text left it visible)', async () => {
+    const { redact } = await import('../../src/engine/log');
+    const h = os.homedir();
+    expect(redact(`${h}${path.sep}Vidéos`)).toBe(`~${path.sep}Vidéos`);
+    expect(redact(`${h.split(path.sep).join('/')}/a.mp4`)).toBe('~/a.mp4');
+    expect(redact('D:\\Projets\\a.mp4')).toBe('D:\\Projets\\a.mp4');
+  });
+
   it('rotates by size and prunes old days', () => {
     const dir = tmp();
     configureLog({ dir, minLevel: 'info', maxFileBytes: 400, keepDays: 14 });

@@ -26,9 +26,22 @@ const opts = { dir: '', minLevel: 'info' as LogLevel, maxFileBytes: 5 * 1024 * 1
 const recent: LogEntry[] = [];
 const home = os.homedir();
 
-/** Masks the home folder; keeps the rest of a path (useful to diagnose) */
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// the home folder in either separator (C:\Users\nom or C:/Users/nom), case-insensitive on Windows
+const homeRe =
+  home && home.length > 2 ? new RegExp(escapeRe(home).replace(/\\\\|\//g, '[\\\\/]'), process.platform === 'win32' ? 'gi' : 'g') : null;
+
+/** Masks the home folder; keeps the rest of a path (useful to diagnose). */
 export function redact(s: string): string {
-  return home && home.length > 2 ? s.split(home).join('~') : s;
+  return homeRe ? s.replace(homeRe, '~') : s;
+}
+
+/** Redacts every string inside a value (applied before serialising: in JSON text, Windows backslashes are doubled). */
+function redactDeep(v: unknown, depth = 0): unknown {
+  if (typeof v === 'string') return redact(v);
+  if (depth > 6 || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map((x) => redactDeep(x, depth + 1));
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, redactDeep(x, depth + 1)]));
 }
 
 export function configureLog(o: Partial<typeof opts>) {
@@ -58,7 +71,7 @@ export function pruneLogs(now = Date.now()) {
 
 export function log(level: LogLevel, cat: LogCategory, msg: string, data?: Record<string, unknown>, corr?: string) {
   if (RANK[level] < RANK[opts.minLevel]) return;
-  const e: LogEntry = { t: new Date().toISOString(), level, cat, msg: redact(msg), ...(corr ? { corr } : {}), ...(data ? { data: JSON.parse(redact(JSON.stringify(data))) } : {}) };
+  const e: LogEntry = { t: new Date().toISOString(), level, cat, msg: redact(msg), ...(corr ? { corr } : {}), ...(data ? { data: redactDeep(data) as Record<string, unknown> } : {}) };
   recent.push(e);
   if (recent.length > 500) recent.shift();
   if (!opts.dir) return;

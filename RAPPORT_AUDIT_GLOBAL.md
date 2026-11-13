@@ -207,6 +207,11 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
   des machines Windows de GitHub (`spawnSync zip ENOENT`). Corrigé au commit 45335c0 : le test
   construit lui-même l'archive (écrivain ZIP de test) et vérifie en plus deux noms d'entrée hostiles.
   Aucun code de l'application n'était en cause.
+- Run 38 : **rouge sous Windows**, et cette fois l'application était en cause. Le journal technique
+  masquait le dossier personnel dans le texte JSON, où les barres obliques inverses de Windows sont
+  doublées : le nom du compte restait visible dans le journal. Le test l'a détecté. Corrigé : le
+  masquage porte sur chaque valeur avant la sérialisation, accepte les deux séparateurs et ignore la
+  casse sous Windows. Un test dédié a été ajouté.
 
 ### Sécurité des dépendances
 - `npm audit --omit=dev` : **0 vulnérabilité** dans ce qui est livré.
