@@ -57,7 +57,7 @@ Compagnon : [`docs/BENCHMARK_OPEN_SOURCE.md`](docs/BENCHMARK_OPEN_SOURCE.md),
 |---|---|---|---|---|
 | Détection des cases + ordre de lecture (manga RTL) | ✅ | fichiers réels (test d'intégration) | cases sans bordure non détectées | P2 (modèle ONNX) |
 | Formats (couverture, planche, double page, webtoon) | ✅ | tests | — | — |
-| Import d'archives CBZ/CBR | ⛔ | — | absent | **P1** |
+| Import d'archives CBZ/ZIP | ✅ **(nouveau)** | pages extraites dans l'ordre naturel, octet pour octet (test d'intégration) | CBR (RAR) non pris en charge : licence non libre | — |
 | Bulles, OCR, dialogues | ⛔ | — | absent | P2 (ONNX + Tesseract, voir benchmark) |
 | Traduction, effacement des textes | ⛔ | — | absent | P3 |
 | Reconnaissance des personnages | ⛔ | — | uniquement par nom de fichier | P2 (OpenCLIP) |
@@ -66,7 +66,7 @@ Compagnon : [`docs/BENCHMARK_OPEN_SOURCE.md`](docs/BENCHMARK_OPEN_SOURCE.md),
 | Fonctionnalité | État | Qualité / preuve | Problème | Action |
 |---|---|---|---|---|
 | Correspondance narration ↔ image | 🟡 | noms de fichiers, étiquettes, références de numéros | aucune analyse du contenu de l'image | P2 (recherche sémantique locale) |
-| Doublons | ⛔ | — | absent | **P1** (empreinte perceptuelle) |
+| Doublons | ✅ **(nouveau)** | empreinte perceptuelle + couleur moyenne ; une copie n'est jamais montrée juste après l'original (test qui échoue sans le correctif) | images très retouchées non reconnues | — |
 | Œuvres homonymes exclues | ✅ | tests | — | — |
 | Droits / provenance | 🟡 | modèle de droits + QC bloque les droits non vérifiés | pas d'interface d'édition des droits | P2 |
 
@@ -171,8 +171,8 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
 | **P0-3** | Reproductibilité du build FFmpeg | `scripts/fetch-ffmpeg.mjs` | même SHA-256 à chaque build | CI | **constat** : BtbN ne conserve qu'environ un mois de builds datés (37 tags) — épingler un tag casserait le build après quelques semaines. Traçabilité actuelle : SHA-256 de l'archive + version exacte relevée par l'auto-test de chaque installateur. **Solution proposée, à valider par vous** : archiver le build FFmpeg retenu dans une *release* GitHub de Primestone (publication) puis épingler sur cette archive. |
 | **P1-1** ✅ | Transcription intégrée sans Python | `engine/transcribe.ts`, `engine/models.ts`, Réglages | modèle téléchargé avec accord, vérifié, utilisé | 3 intégration + reconnaissance réelle CI | qualité sur vraie voix à mesurer |
 | **P1-2** ✅ | Comparaison mesurée des versions | `production/compare.ts`, Inspecteur | tableau, verdicts techniques seulement | unitaire + E2E | — |
-| **P1-3** | Import d'archives CBZ/ZIP de planches | `engine/production.ts` (scan) | pages extraites dans l'ordre, cases détectées | intégration | archives volumineuses |
-| **P1-4** | Doublons d'images (empreinte perceptuelle) | `engine/media.ts`, planner | doublon jamais montré deux fois comme deux images | intégration | faux positifs |
+| **P1-3** ✅ | Import d'archives CBZ/ZIP de planches | `engine/production.ts` (scan) | pages extraites dans l'ordre, cases détectées | intégration | archives volumineuses |
+| **P1-4** ✅ | Doublons d'images (empreinte perceptuelle) | `engine/media.ts`, planner | doublon jamais montré deux fois comme deux images | intégration | faux positifs |
 | **P1-5** | Musique par section depuis une bibliothèque locale | `production/music.ts` | choix expliqué, transitions aux changements de section | intégration | licence des musiques (droits) |
 | **P1-6** | Respirations/hésitations (VAD) | whisper.cpp `--vad` | pauses classées, « euh » repérés | réel en CI | modèle VAD (consentement) |
 | **P1-7** | Journal structuré (fichier) | `main/` | journal JSON par session, sans données personnelles | unitaire | — |
@@ -188,6 +188,25 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
 | 3 | Comparaison mesurée des versions | unitaire + E2E |
 | 4 | Protocole média restreint aux médias | E2E |
 | 5 | Registre des composants tiers, audit des licences transitives | — |
+| 6 | Archives CBZ/ZIP (lecteur ZIP borné : noms jamais utilisés comme chemins, taille et nombre limités, images seules) | intégration (ordre naturel, pages identiques à l'octet, entrée hostile refusée, cache) |
+| 7 | Doublons d'images (dHash + couleur moyenne) | unitaires + intégration ; un faux positif (couvertures teintées regroupées) détecté par le test Script → Vidéo puis corrigé |
+| 8 | Dépendances de développement : Vite 8.0 → 8.3.8 (alerte « high » de launch-editor, serveur de dev seulement) | 134 tests + 6 E2E |
+
+### Résultats de la CI (run 31)
+- Windows : whisper.cpp compilé depuis le tag en 1 min 30, installateur, installation silencieuse,
+  **auto-test de l'application installée (whisper-cli exécuté)**, désinstallation : ✅.
+- Linux : modèle officiel `small` téléchargé, SHA-1 vérifié, reconnaissance réelle : ✅ **de justesse**
+  (confiance 0,667 pour un seuil de 0,66). Texte reconnu sur la voix espeak : « C'est bien mal à
+  foutre de bouffer au-delà du sud de New York… » — la voix robotique d'espeak est mal reconnue. Ce
+  test prouve que la chaîne fonctionne (programme, modèle, horodatage, alignement), **pas la
+  précision** ; sur votre vraie voix, le modèle `small` (via faster-whisper) donnait une
+  transcription fidèle (confiance moyenne 0,91).
+
+### Sécurité des dépendances
+- `npm audit --omit=dev` : **0 vulnérabilité** dans ce qui est livré.
+- Outils de développement : alerte « high » corrigée (Vite) ; 6 alertes « moderate » restantes
+  (`minimatch` via electron-builder), sans effet sur l'application installée, correction seulement
+  par une montée de version majeure de l'outil d'empaquetage (à planifier).
 
 ## Limites de cet audit
 - Machine de l'utilisateur (RTX 3050) inaccessible : aucune mesure GPU.
