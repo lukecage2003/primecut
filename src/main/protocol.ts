@@ -32,7 +32,9 @@ export function registerMediaProtocol() {
     } catch {
       return new Response('Not found', { status: 404 });
     }
-    const type = MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+    // media only: the renderer never needs other files, so nothing else on the disk is served
+    const type = MIME[path.extname(file).toLowerCase()];
+    if (!type) return new Response('Forbidden', { status: 403 });
     const range = req.headers.get('range');
     const headers: Record<string, string> = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache' };
     if (range) {

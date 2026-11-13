@@ -23,8 +23,8 @@ Playwright (Apache-2.0), @types/* (MIT), electron-builder (MIT, planned for pack
 | pdfjs-dist 4.10 | Apache-2.0 | PDF script import (runs in the main process, no network). |
 | an-array-of-french-words / an-array-of-english-words 2.0 | MIT | Word lists used only to repair words glued by PDF justification. |
 | faster-whisper (optional, user-installed) | MIT | Transcription sidecar, `tools/transcribe/faster_whisper_words.py`. Not bundled. |
-| whisper.cpp (optional, user-installed) | MIT | Alternative transcription engine (no Python). Not bundled. |
-| Whisper model weights (user-provided) | MIT | Never downloaded by Primestone. |
+| whisper.cpp v1.9.5 | MIT | **Bundled** built-in transcription engine (`resources/whisper`, licence text and SOURCE.json shipped). See docs/THIRD_PARTY.md. |
+| Whisper ggml model weights | MIT | Downloaded **only on explicit request** in Settings (size, source, licence shown; SHA-1 checked). |
 | three (Three.js) 0.170 | MIT | P-CORE 3D renderer (bundled in the hidden render page). |
 | espeak-ng | GPL-3.0 | **Test tooling only** (campaign narrations); not shipped, not linked. |
 
