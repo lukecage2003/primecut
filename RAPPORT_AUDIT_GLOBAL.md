@@ -183,7 +183,7 @@ Principe à garder : **cœur pur et testé** (`core`, `production`, `pcore` sans
 
 | Lot | Contenu | Tests |
 |---|---|---|
-| 1 | whisper.cpp v1.9.5 intégré (Linux : compilation statique du tag ; Windows : binaire officiel), gestionnaire de modèles (consentement, reprise, SHA-1), Réglages, auto-test de l'installation, progression corrigée (elle n'était jamais lue) | 3 intégration (téléchargement, reprise, SHA-1 faux) + moteur détecté + reconnaissance réelle en CI |
+| 1 | whisper.cpp v1.9.5 intégré (compilé depuis le tag sur Linux et Windows, autonome : sans OpenMP, runtime statique — le tag n'a pas d'archive Windows publiée, constaté en CI), gestionnaire de modèles (consentement, reprise, SHA-1), Réglages, auto-test de l'installation, progression corrigée (elle n'était jamais lue) | 3 intégration (téléchargement, reprise, SHA-1 faux) + moteur détecté + reconnaissance réelle en CI avec le modèle officiel recommandé (`small`) |
 | 2 | Installateur en français | CI Windows |
 | 3 | Comparaison mesurée des versions | unitaire + E2E |
 | 4 | Protocole média restreint aux médias | E2E |

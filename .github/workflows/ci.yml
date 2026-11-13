@@ -15,13 +15,17 @@ jobs:
       - run: npm run typecheck
       - name: Built-in transcription engine (whisper.cpp, static build of the pinned tag)
         run: node scripts/fetch-whisper.mjs
-      - name: Official Whisper base model (SHA-1 from whisper.cpp models/README.md)
+      - name: Cache the official Whisper small model
+        uses: actions/cache@v4
+        with: { path: '${{ runner.temp }}/models', key: whisper-ggml-small-55356645c2b361a969dfd0ef2c5a50d530afd8d5 }
+      - name: Official Whisper small model (SHA-1 from whisper.cpp models/README.md)
         run: |
           mkdir -p "$RUNNER_TEMP/models"
-          curl -sSL -o "$RUNNER_TEMP/models/ggml-base.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-          echo "465707469ff3a37a2b9b8d8f89f2f99de7299dac  $RUNNER_TEMP/models/ggml-base.bin" | sha1sum -c -
+          f="$RUNNER_TEMP/models/ggml-small.bin"
+          [ -f "$f" ] || curl -sSL -o "$f" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+          echo "55356645c2b361a969dfd0ef2c5a50d530afd8d5  $f" | sha1sum -c -
       - run: npm test
-        env: { PRIMESTONE_WHISPER_MODEL: '${{ runner.temp }}/models/ggml-base.bin' }
+        env: { PRIMESTONE_WHISPER_MODEL: '${{ runner.temp }}/models/ggml-small.bin' }
       - run: npm run build
       - run: xvfb-run -a -s "-screen 0 1600x1000x24" npx playwright test --trace off
 
@@ -33,7 +37,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: node scripts/fetch-ffmpeg.mjs gpl
-      - name: Built-in transcription engine (official whisper.cpp release, CPU x64)
+      - name: Built-in transcription engine (whisper.cpp, static build of the pinned tag)
         run: node scripts/fetch-whisper.mjs
       - name: Unit + integration tests (bundled FFmpeg)
         env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\vendor\ffmpeg' }

@@ -1,6 +1,6 @@
 /**
  * Built-in transcription (whisper.cpp, no Python). The real recognition test needs an official ggml
- * model (PRIMESTONE_WHISPER_MODEL, SHA-1 checked by CI) and espeak-ng for French speech; without them
+ * model (PRIMESTONE_WHISPER_MODEL: the recommended `small`, SHA-1 checked by CI) and espeak-ng for French speech; without them
  * only the real invocation of the bundled binary is checked.
  */
 import { execFileSync } from 'node:child_process';
@@ -42,6 +42,8 @@ describe.skipIf(!fs.existsSync(cli))('built-in whisper.cpp', () => {
     execFileSync('espeak-ng', ['-v', 'fr', '-s', '150', '-w', wav, text]);
     const progress: number[] = [];
     const r = await transcribe(wav, { enabled: true, backend: 'whisper.cpp', modelPath: model!, language: 'fr', device: 'auto' }, path.join(dir, 'Cache'), { progress: (f) => progress.push(f) });
+    const a = alignToTranscript(parseScript(text).sentences, r.words);
+    console.log('whisper.cpp words:', r.words.map((w) => w.text).join(' '), '| confidence', a.confidence, '|', r.seconds, 's');
     expect(r.engine).toMatch(/whisper\.cpp/);
     // word timings are increasing and inside the file
     r.words.forEach((w, i) => {
@@ -49,9 +51,7 @@ describe.skipIf(!fs.existsSync(cli))('built-in whisper.cpp', () => {
       if (i) expect(w.start).toBeGreaterThanOrEqual(r.words[i - 1]!.start - 0.01);
     });
     // alignment with the script: most sentences recognised (espeak is a robotic voice)
-    const a = alignToTranscript(parseScript(text).sentences, r.words);
     expect(a.confidence).toBeGreaterThanOrEqual(0.66);
     expect(progress.length).toBeGreaterThan(0);
-    console.log('whisper.cpp words:', r.words.map((w) => w.text).join(' '), '| confidence', a.confidence, '|', r.seconds, 's');
   }, 300000);
 });

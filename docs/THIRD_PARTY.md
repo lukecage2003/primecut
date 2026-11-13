@@ -15,7 +15,7 @@ Audit des dépendances npm **embarquées** (fermeture transitive des `dependenci
 | pdfjs-dist | 4.10.38 | npm | Apache-2.0 | aucune | Avis + NOTICE Apache. |
 | an-array-of-french-words / english-words | 2.0.0 | npm | MIT | aucune | Avis de licence. |
 | **FFmpeg / FFprobe** (exécutables séparés) | série 8.1, build GPL « latest » BtbN (Windows) | github.com/BtbN/FFmpeg-Builds, SHA-256 vérifié | **GPL-3.0** (avec libx264/x265) | aucune | Appelés en sous-processus, jamais liés. `LICENSE.txt` et `SOURCE.txt` (archive, SHA-256, lien vers le code source exact) livrés dans `resources/ffmpeg`. ⚠ Version « latest » : épingler un build daté (voir RAPPORT_AUDIT_GLOBAL, P0-3). |
-| **whisper.cpp** `whisper-cli` | v1.9.5 (`d1be6fd`) | github.com/ggml-org/whisper.cpp — Windows : archive officielle `whisper-bin-x64.zip` ; Linux : compilation statique du tag | **MIT** | aucune | `LICENSE-whisper.cpp.txt` (texte exact du tag) et `SOURCE.json` (origine, SHA-256) livrés dans `resources/whisper`. |
+| **whisper.cpp** `whisper-cli` | v1.9.5 (`d1be6fd`) | github.com/ggml-org/whisper.cpp — compilé depuis les sources du tag sur chaque système (`scripts/fetch-whisper.mjs`) : CPU, sans OpenMP, runtime C/C++ statique (le tag n'a pas d'archive Windows publiée) | **MIT** | aucune (options de compilation seulement) | `LICENSE-whisper.cpp.txt` (texte exact du tag) et `SOURCE.json` (origine, SHA-256) livrés dans `resources/whisper`. |
 | Logo et silhouette Primestone (P-CORE) | — | Primestone | propriété de Primestone | — | — |
 
 ## Téléchargés uniquement à la demande de l'utilisateur
