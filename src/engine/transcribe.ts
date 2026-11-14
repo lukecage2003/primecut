@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { RecognisedWord } from '../production';
 import { ffmpeg } from './ffmpeg';
@@ -34,6 +35,27 @@ export interface TranscriberConfig {
   /** 'auto' | 'cpu' | 'cuda' (faster-whisper); whisper.cpp uses the GPU its build supports. */
   device: 'auto' | 'cpu' | 'cuda';
   threads?: number;
+  /** Use the most accurate whisper.cpp model present next to the chosen one that this computer can run (default true). */
+  autoModel?: boolean;
+}
+
+/**
+ * The most accurate ggml model present beside the configured one that this computer can run in reasonable
+ * time: medium (or large-v3-turbo) from 6 processor threads, small otherwise. Never downloads anything.
+ * Measured here: on 62 s of French narration, medium fixed every proper-name error small made
+ * ("Cypher ou Doug Ramsey", "Horsemen", "Death Seeds", "Archangel") for about 1× real time on 16 threads.
+ */
+export function bestModel(cfg: TranscriberConfig, threads = os.cpus().length): { path: string | undefined; note: string | null } {
+  if (!cfg.modelPath || cfg.backend !== 'whisper.cpp' || cfg.autoModel === false) return { path: cfg.modelPath, note: null };
+  const dir = path.dirname(cfg.modelPath);
+  const ranked = threads >= 6 ? ['ggml-large-v3-turbo-q5_0.bin', 'ggml-medium.bin', 'ggml-small.bin'] : ['ggml-small.bin', 'ggml-base.bin'];
+  const current = path.basename(cfg.modelPath);
+  for (const name of ranked) {
+    if (name === current) return { path: cfg.modelPath, note: null };
+    const p = path.join(dir, name);
+    if (fs.existsSync(p)) return { path: p, note: `modèle ${name.replace(/^ggml-|\.bin$/g, '')} choisi automatiquement (plus précis, ${threads} cœurs disponibles)` };
+  }
+  return { path: cfg.modelPath, note: null };
 }
 
 export const DEFAULT_TRANSCRIBER: TranscriberConfig = { enabled: false, backend: 'whisper.cpp', language: 'fr', device: 'auto' };

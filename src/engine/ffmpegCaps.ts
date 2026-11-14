@@ -6,7 +6,8 @@
 import { ffmpeg, ffmpegPaths, run } from './ffmpeg';
 
 export const FFMPEG_REQUIREMENTS = {
-  encoders: ['libx264', 'libx265', 'libvpx-vp9', 'aac', 'flac', 'pcm_s16le', 'pcm_s24le', 'pcm_f32le', 'png', 'mjpeg', 'prores_ks', 'qtrle', 'libopus'],
+  // x264/x265 are GPL: the installer's LGPL FFmpeg has neither (AV1/VP9 on the processor, H.264 on the graphics card)
+  encoders: ['libvpx-vp9', 'aac', 'flac', 'pcm_s16le', 'pcm_s24le', 'pcm_f32le', 'png', 'mjpeg', 'prores_ks', 'qtrle', 'libopus'],
   decoders: ['h264', 'hevc', 'libvpx-vp9', 'vp9', 'prores', 'png', 'mjpeg', 'webp', 'mp3', 'aac', 'flac', 'vorbis', 'opus', 'pcm_s16le', 'pcm_s24le'],
   filters: [
     'acompressor', 'aecho', 'aevalsrc', 'afade', 'afftdn', 'aformat', 'alimiter', 'alphaextract', 'amerge', 'amix', 'anoisesrc', 'anullsrc', 'apad', 'aresample', 'aselect', 'asetpts', 'asplit', 'ass', 'atrim',
@@ -15,7 +16,7 @@ export const FFMPEG_REQUIREMENTS = {
   ],
   muxers: ['mp4', 'mov', 'webm', 'matroska', 'wav', 'flac', 'image2', 'null', 'f32le', 's16le', 'rawvideo', 'srt', 'webvtt'],
   demuxers: ['concat', 'lavfi', 'mov', 'matroska', 'mp3', 'wav', 'flac', 'ogg', 'image2', 'aac'],
-  optionalEncoders: ['h264_nvenc', 'hevc_nvenc', 'h264_qsv', 'hevc_qsv', 'h264_amf', 'hevc_amf'],
+  optionalEncoders: ['libx264', 'libx265', 'libsvtav1', 'h264_nvenc', 'hevc_nvenc', 'h264_qsv', 'hevc_qsv', 'h264_amf', 'hevc_amf'],
 } as const;
 
 export interface FfmpegCapabilities {

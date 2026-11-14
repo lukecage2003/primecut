@@ -8,6 +8,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { type GeneratorSpec, STYLE_COLORS, rand, specHash, wrapLines } from '../core';
 import { escapeFilterPath } from './exporter';
+import { intermediateVideoArgs } from './videoEncoders';
 import { ffmpeg } from './ffmpeg';
 
 const f3 = (n: number) => n.toFixed(3);
@@ -311,7 +312,7 @@ export async function renderGenerator(spec: GeneratorSpec, o: RenderGeneratorOpt
   if (process.env.PRIMESTONE_DEBUG_GEN) await fsp.writeFile(process.env.PRIMESTONE_DEBUG_GEN, JSON.stringify(['-v', 'error', ...inputs, '-filter_complex', f.join(';')]));
   try {
     await ffmpeg(
-      ['-v', 'error', ...inputs, '-filter_complex', f.join(';'), '-map', `[${vout}]`, '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', rate, '-t', f3(d), '-movflags', '+faststart', tmp],
+      ['-v', 'error', ...inputs, '-filter_complex', f.join(';'), '-map', `[${vout}]`, '-an', ...(await intermediateVideoArgs(18)), '-pix_fmt', 'yuv420p', '-r', rate, '-t', f3(d), '-movflags', '+faststart', tmp],
       { signal: o.signal },
     );
   } finally {

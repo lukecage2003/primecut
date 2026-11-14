@@ -9,3 +9,5 @@ vendor/ffmpeg/
 .scratch/
 vendor/whisper/
 annotation/
+vendor/denoise/
+tools/denoise/target/

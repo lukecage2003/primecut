@@ -32,6 +32,8 @@ test('script + narration + folder → generated video', async () => {
   await stubOpenDialog(app, [lib]);
   await page.getByTestId('add-folder').click();
   if (process.env.PRIMESTONE_SHOTS) await page.screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '05b-production-panel.png') });
+  // this test checks swapping back to the original voice: that needs the voice timing unchanged (no pause cutting)
+  await page.getByLabel('Resserrer les longues pauses').uncheck();
   await page.getByTestId('generate').click();
   await expect(page.getByTestId('production-panel')).toHaveCount(0, { timeout: 60000 });
 

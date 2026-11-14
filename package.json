@@ -78,6 +78,13 @@
         ]
       },
       {
+        "from": "vendor/denoise",
+        "to": "denoise",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "tools/transcribe",
         "to": "transcribe",
         "filter": [

@@ -1,5 +1,5 @@
 import { SCRIPT_EXTENSIONS, readScriptDocument } from '../engine/scriptFile';
-import { transcribe } from '../engine/transcribe';
+import { bestModel, transcribe } from '../engine/transcribe';
 import { renderPCoreAsset } from './pcoreRender';
 import { loadSettings } from './settings';
 import type { RecognisedWord } from '../production';
@@ -68,7 +68,8 @@ export function registerProductionIpc() {
         if (tcfg?.enabled && narr) {
           try {
             c.progress(0.01, 'Transcription locale de la narration');
-            const t = await transcribe(narr.path, tcfg, path.join(path.dirname(projectFile), 'Cache'), {
+            const best = bestModel(tcfg);
+            const t = await transcribe(narr.path, { ...tcfg, modelPath: best.path }, path.join(path.dirname(projectFile), 'Cache'), {
               signal: c.signal,
               fingerprint: narr.fingerprint.partialHash + narr.fingerprint.size,
               // with hesitation cutting, the prompt shows Whisper that hesitations are written (otherwise it leaves them out)
@@ -76,7 +77,7 @@ export function registerProductionIpc() {
               progress: (f) => c.progress(0.01 + 0.3 * f, `Transcription locale de la narration (${Math.round(f * 100)}%)`),
             });
             transcript = t.words;
-            transcription = `${t.engine} · ${t.words.length} mots${t.cached ? ' (en cache)' : ` en ${t.seconds.toFixed(0)} s`}`;
+            transcription = `${t.engine} · ${t.words.length} mots${t.cached ? ' (en cache)' : ` en ${t.seconds.toFixed(0)} s`}${best.note ? ` · ${best.note}` : ''}`;
             c.log(`Transcription: ${transcription}`);
           } catch (e) {
             if (c.signal.aborted) throw e;

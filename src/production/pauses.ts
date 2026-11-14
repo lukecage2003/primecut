@@ -12,7 +12,8 @@ export interface TightenOptions {
   keepPause: number;
 }
 
-export const DEFAULT_TIGHTEN: TightenOptions = { maxPause: 0.75, keepPause: 0.45 };
+// podcast pacing: any pause over half a second is brought down to about a third of a second
+export const DEFAULT_TIGHTEN: TightenOptions = { maxPause: 0.5, keepPause: 0.32 };
 
 export interface TightenPlan {
   /** Source ranges kept, in order. */

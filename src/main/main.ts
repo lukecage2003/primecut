@@ -2,6 +2,7 @@ import path from 'node:path';
 import { BrowserWindow, Menu, app, nativeTheme, session } from 'electron';
 import { resolveFfmpeg, setFfmpegPaths } from '../engine/ffmpeg';
 import { bundledWhisperCli, setBundledWhisperCli } from '../engine/transcribe';
+import { setBundledDenoiser } from '../engine/voice';
 import { registerIpc } from './ipc';
 import { registerProductionIpc } from './productionIpc';
 import { registerMediaProtocol, registerSchemePrivileges } from './protocol';
@@ -67,6 +68,9 @@ app.whenReady().then(() => {
   // whisper.cpp shipped with the app (built-in transcription, no Python)
   const exe = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
   setBundledWhisperCli(app.isPackaged ? path.join(process.resourcesPath, 'whisper', exe) : path.join(app.getAppPath(), 'vendor', 'whisper', exe));
+  // neural speech denoiser (DeepFilterNet3) shipped with the app
+  const dn = process.platform === 'win32' ? 'primestone-denoise.exe' : 'primestone-denoise';
+  setBundledDenoiser(app.isPackaged ? path.join(process.resourcesPath, 'denoise', dn) : path.join(app.getAppPath(), 'vendor', 'denoise', dn));
   // only the microphone (spoken edit instructions, transcribed locally) may be requested by the window
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done, details) => done(permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.every((t) => t === 'audio') !== false));
   if (!process.env.PRIMESTONE_DEVTOOLS) Menu.setApplicationMenu(null);
@@ -123,12 +127,16 @@ async function runSelfTest(outFile: string): Promise<number> {
   });
   await check('encode', async () => {
     const out = path.join(os.tmpdir(), `primestone-self-test-${process.pid}.mp4`);
-    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=1', '-f', 'lavfi', '-i', 'sine=f=440:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out]);
+    // the processor encoder exports fall back to on a computer without a usable graphics-card encoder
+    const { cpuExportEncoder } = await import('../engine/videoEncoders');
+    const { encoderArgs } = await import('../engine/exporter');
+    const enc = await cpuExportEncoder('h264');
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=1', '-f', 'lavfi', '-i', 'sine=f=440:d=1', ...encoderArgs({ crf: 18, preset: 'medium' } as never, enc), '-c:a', 'aac', '-shortest', out]);
     const { stdout } = await ffprobe(['-v', 'error', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', out]);
     await fs.rm(out, { force: true });
     const codecs = stdout.toString().trim().split(/\s+/).join(',');
-    if (!codecs.includes('h264') || !codecs.includes('aac')) throw new Error(`unexpected streams: ${codecs}`);
-    return codecs;
+    if (!/h264|av1|vp9/.test(codecs) || !codecs.includes('aac')) throw new Error(`unexpected streams: ${codecs}`);
+    return `${codecs} (${enc})`;
   });
   const asset = (rel: string) => (app.isPackaged ? path.join(res, rel) : path.join(res, rel.startsWith('pcore') ? 'assets' : 'tools', rel));
   await check('pcore-assets', async () => {
@@ -141,6 +149,23 @@ async function runSelfTest(outFile: string): Promise<number> {
     const { execFile } = await import('node:child_process');
     const out = await new Promise<string>((res, rej) => execFile(cli, ['--help'], { timeout: 20000, windowsHide: true }, (e, so, se) => (/--output-json/.test(so + se) ? res('whisper-cli runs') : rej(e ?? new Error('unexpected output')))));
     return `${out} · ${cli}`;
+  });
+  // the neural speech denoiser really runs on this machine: one second of noise in, the same length out
+  await check('denoiser', async () => {
+    const { findDenoiser } = await import('../engine/voice');
+    const bin = findDenoiser();
+    if (!bin) throw new Error('primestone-denoise absent de l’installation');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-dn-'));
+    const input = path.join(dir, 'in.f32'), output = path.join(dir, 'out.f32');
+    const buf = Buffer.alloc(48000 * 4);
+    for (let i = 0; i < 48000; i++) buf.writeFloatLE((Math.random() - 0.5) * 0.02 + 0.2 * Math.sin((2 * Math.PI * 220 * i) / 48000), i * 4);
+    await fs.writeFile(input, buf);
+    const { execFile } = await import('node:child_process');
+    await new Promise<void>((res, rej) => execFile(bin, [input, output, '30'], { timeout: 60000, windowsHide: true }, (e) => (e ? rej(e) : res())));
+    const n = (await fs.stat(output)).size;
+    await fs.rm(dir, { recursive: true, force: true });
+    if (n !== buf.length) throw new Error(`sortie de ${n} octets au lieu de ${buf.length}`);
+    return `DeepFilterNet3 · ${bin}`;
   });
   await check('transcription-sidecar', async () => {
     await fs.access(asset('transcribe/faster_whisper_words.py'));

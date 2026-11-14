@@ -107,10 +107,15 @@ export async function hardwareReport(): Promise<HardwareReport> {
  * unless the user explicitly selects hardware; Balanced prefers a verified hardware encoder.
  * Never silently lowers quality: the choice is reported back to the user.
  */
-export function chooseEncoder(codec: 'h264' | 'hevc', hardware: 'auto' | 'cpu', profile: PerformanceProfile, hw: string[]): string {
-  const cpu = codec === 'hevc' ? 'libx265' : 'libx264';
-  if (hardware === 'cpu' || profile !== 'balanced') return cpu;
-  return hw.find((e) => e.startsWith(codec === 'hevc' ? 'hevc_' : 'h264_')) ?? cpu;
+export function chooseEncoder(codec: 'h264' | 'hevc', hardware: 'auto' | 'cpu', profile: PerformanceProfile, hw: string[], cpu: string = codec === 'hevc' ? 'libx265' : 'libx264'): string {
+  const hwEnc = hw.find((e) => e.startsWith(codec === 'hevc' ? 'hevc_' : 'h264_'));
+  // without x264/x265 (LGPL FFmpeg), the graphics card keeps the requested codec (H.264/HEVC), so it wins
+  // over an AV1/VP9 processor encode unless the processor was explicitly asked for
+  const cpuIsX = cpu === 'libx264' || cpu === 'libx265';
+  if (hardware === 'cpu') return cpu;
+  if (!cpuIsX && hwEnc) return hwEnc;
+  if (profile !== 'balanced') return cpu;
+  return hwEnc ?? cpu;
 }
 
 export interface DiagnosticsReport {

@@ -32,6 +32,7 @@ import {
   trackActivity,
 } from '../core';
 import { CancelledError, ffmpeg, ffprobe } from './ffmpeg';
+import { cpuExportEncoder } from './videoEncoders';
 import { cacheDirs, makePeaks } from './media';
 
 export interface ExportRange {
@@ -68,6 +69,13 @@ export function encoderArgs(s: ExportSettings, encoder: string): string[] {
     a.push('-c:v', encoder, '-global_quality', String(s.crf + 2));
   } else if (encoder.endsWith('_amf')) {
     a.push('-c:v', encoder, '-rc', 'cqp', '-qp_i', String(s.crf), '-qp_p', String(s.crf + 2));
+  } else if (encoder === 'libsvtav1') {
+    // AV1 on the processor (no GPL): CRF on the AV1 scale (x264 18 ≈ AV1 28), preset by speed setting
+    a.push('-c:v', encoder, '-crf', String(Math.min(63, s.crf + 10)), '-preset', s.preset === 'fast' ? '8' : s.preset === 'slow' ? '4' : '6', '-svtav1-params', 'tune=0');
+  } else if (encoder === 'libaom-av1') {
+    a.push('-c:v', encoder, '-crf', String(Math.min(63, s.crf + 10)), '-b:v', '0', '-cpu-used', '6', '-row-mt', '1');
+  } else if (encoder === 'libvpx-vp9') {
+    a.push('-c:v', encoder, '-crf', String(Math.min(63, s.crf + 13)), '-b:v', '0', '-row-mt', '1', '-cpu-used', s.preset === 'slow' ? '1' : '2');
   } else {
     a.push('-c:v', encoder);
   }
@@ -388,7 +396,7 @@ export async function exportSequence(job: ExportJob): Promise<VerifyResult> {
     await fsp.writeFile(assFile, captionsToAss(seq, seq.captions, job.range?.start ?? 0), 'utf8');
   }
   const duckFiles = await writeDuckFiles(job.project, seq, job.cacheDir ?? path.join(path.dirname(job.output), '.primestone-cache'), path.dirname(job.output), `.${path.basename(job.output, ext)}`, job.range?.start ?? 0, job.signal);
-  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder, assFile, duckFiles });
+  const plan = buildExportPlan(job.project, seq, tmp, { range: job.range, encoder: job.encoder ?? (await cpuExportEncoder(job.project.exportSettings.videoCodec === 'hevc' ? 'hevc' : 'h264')), assFile, duckFiles });
   job.onLog?.(`ffmpeg ${plan.args.length} args, ${plan.frames} frames`);
   try {
     await ffmpeg(plan.args, {
@@ -461,7 +469,7 @@ async function exportSegmented(job: ExportJob, seq: Sequence, range: ExportRange
   const target = Math.max(1, secondsToFrames(job.segmentSeconds ?? 60, r));
   const bounds = segmentBoundaries(job.project, seq, range, target);
   const total = range.end - range.start;
-  const encoder = job.encoder ?? (job.project.exportSettings.videoCodec === 'hevc' ? 'libx265' : 'libx264');
+  const encoder = job.encoder ?? (await cpuExportEncoder(job.project.exportSettings.videoCodec === 'hevc' ? 'hevc' : 'h264'));
   const segFiles: string[] = [];
   let doneFrames = 0;
   const report = (f: number) => job.onProgress?.(Math.min(0.99, (0.88 * f) / total));

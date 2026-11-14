@@ -5,6 +5,8 @@
  * the cleaned copy is an ordinary media item that can be swapped back at any time.
  */
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { MediaAsset } from '../core/model';
@@ -81,6 +83,43 @@ export function noiseSampleInterval(silences: Interval[]): Interval | null {
   return { start: best.start + 0.05, end: Math.min(best.end - 0.05, best.start + 2.05) };
 }
 
+let bundledDenoiser: string | null = null;
+/** The neural denoiser shipped with the app (set by the Electron host). */
+export function setBundledDenoiser(p: string | null) {
+  bundledDenoiser = p;
+}
+
+/**
+ * The neural speech denoiser (DeepFilterNet3 through deep-filter-rt, MIT/Apache, model embedded, CPU):
+ * PRIMESTONE_DENOISER, the copy shipped with the app, or the development build. Null when absent: the
+ * FFmpeg spectral denoiser is used instead.
+ */
+export function findDenoiser(): string | null {
+  const exe = process.platform === 'win32' ? 'primestone-denoise.exe' : 'primestone-denoise';
+  const cands = [process.env.PRIMESTONE_DENOISER, bundledDenoiser, path.join(process.cwd(), 'vendor', 'denoise', exe), path.join(process.cwd(), 'tools', 'denoise', 'target', 'release', exe)];
+  for (const c of cands) if (c && fs.existsSync(c)) return c;
+  return null;
+}
+
+/** Runs the neural denoiser on a recording: 48 kHz mono WAV out, sample-aligned with the input. Cached. */
+export async function neuralDenoise(file: string, bin: string, dir: string, attenDb: number, signal?: AbortSignal): Promise<string> {
+  const key = crypto.createHash('sha256').update(JSON.stringify(['dfn3-v1', file, fs.statSync(file).size, fs.statSync(file).mtimeMs, attenDb])).digest('hex').slice(0, 20);
+  const out = path.join(dir, `dfn-${key}.wav`);
+  if (fs.existsSync(out)) return out;
+  await fsp.mkdir(dir, { recursive: true });
+  const rawIn = `${out}.in.f32`, rawOut = `${out}.out.f32`;
+  try {
+    await ffmpeg(['-v', 'error', '-y', '-i', file, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', rawIn], { signal });
+    await new Promise<void>((resolve, reject) => execFile(bin, [rawIn, rawOut, String(attenDb)], { signal, windowsHide: true, maxBuffer: 1 << 20 }, (e) => (e ? reject(e) : resolve())));
+    await ffmpeg(['-v', 'error', '-y', '-f', 'f32le', '-ar', '48000', '-ac', '1', '-i', rawOut, '-c:a', 'pcm_f32le', `${out}.part.wav`], { signal });
+    await fsp.rename(`${out}.part.wav`, out);
+  } finally {
+    await fsp.rm(rawIn, { force: true });
+    await fsp.rm(rawOut, { force: true });
+  }
+  return out;
+}
+
 export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' | 'probe'>, cacheDir: string, opts: Partial<VoiceCleanupOptions> & { silences?: Interval[] } = {}, signal?: AbortSignal): Promise<VoiceCleanupResult> {
   const t0 = Date.now();
   const o = { ...DEFAULT_VOICE_CLEANUP, ...opts };
@@ -88,11 +127,28 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   const before = await sampleVoiceQuality(media.path, dur, signal);
   const steps = planVoiceChain(before, o);
   const sample = noiseSampleInterval(o.silences ?? []);
-  const key = crypto.createHash('sha256').update(JSON.stringify(['voice-v1', media.fingerprint.partialHash, media.fingerprint.size, steps.map((s) => s.filter), sample, { ...o, silences: undefined }])).digest('hex').slice(0, 20);
+  // neural denoising when the denoiser is present: always for the radio voice, otherwise when noise is audible
+  const neural = o.strength > 0 && (o.style === 'radio' || steps.some((x) => x.id === 'denoise')) ? findDenoiser() : null;
+  const key = crypto.createHash('sha256').update(JSON.stringify(['voice-v2', media.fingerprint.partialHash, media.fingerprint.size, steps.map((s) => s.filter), sample, { ...o, silences: undefined }, neural ? 'dfn3' : 'fft'])).digest('hex').slice(0, 20);
   const dir = path.join(cacheDir, 'voice');
   const out = path.join(dir, `voice-${key}.wav`);
+  let src = media.path;
+  if (neural) {
+    // how much it may remove: deep for a noisy room, gentler on a clean recording (keeps the voice natural)
+    const atten = before.snrDb < 25 ? 40 : before.snrDb < 40 ? 30 : 20;
+    try {
+      src = await neuralDenoise(media.path, neural, dir, atten, signal);
+      const i = steps.findIndex((x) => x.id === 'denoise');
+      const step = { id: 'denoise' as const, filter: 'anull', reason: `débruitage neuronal DeepFilterNet3 (local, réduction jusqu’à ${atten} dB) : bruit de fond, souffle, résonance de la pièce` };
+      if (i >= 0) steps[i] = step;
+      else steps.splice(1, 0, step);
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      src = media.path; // the spectral denoiser stays in the chain
+    }
+  }
   // the denoiser learns the noise profile in a real pause of this recording
-  const dn = steps.find((s) => s.id === 'denoise');
+  const dn = steps.find((s) => s.id === 'denoise' && s.filter.includes('afftdn'));
   const dnRaw = dn?.filter;
   if (dn && sample) {
     const cmd = `${out}.noise.cmd`;
@@ -112,7 +168,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   }
   await fsp.mkdir(dir, { recursive: true });
   // pass 1: loudness of the original and of the processed voice (one decode)
-  const p1 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-filter_complex', `[0:a]aresample=48000,asplit[a][b];[a]ebur128@orig=framelog=verbose[o1];[b]${chain},ebur128@proc=framelog=verbose[o2]`, '-map', '[o1]', '-f', 'null', '-', '-map', '[o2]', '-f', 'null', '-'], { signal });
+  const p1 = await ffmpeg(['-v', 'info', '-i', media.path, '-i', src, '-vn', '-filter_complex', `[0:a]aresample=48000,ebur128@orig=framelog=verbose[o1];[1:a]aresample=48000,${chain},ebur128@proc=framelog=verbose[o2]`, '-map', '[o1]', '-f', 'null', '-', '-map', '[o2]', '-f', 'null', '-'], { signal });
   // the two summaries are told apart by the filter instance names
   const lufsNamed = (name: string) => {
     const at = p1.stderr.indexOf('Summary:', p1.stderr.lastIndexOf(`[${name} @`));
@@ -131,7 +187,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
   let afterLufs: number | null = null;
   let extra = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const p2 = await ffmpeg(['-v', 'info', '-i', media.path, '-vn', '-af', `aresample=48000,${chain},${level.filter}${align},ebur128=framelog=verbose`, '-ac', String(Math.min(2, media.probe.audio?.channels ?? 1)), '-ar', '48000', '-c:a', 'pcm_s24le', part], { signal });
+    const p2 = await ffmpeg(['-v', 'info', '-i', src, '-vn', '-af', `aresample=48000,${chain},${level.filter}${align},ebur128=framelog=verbose`, '-ac', String(Math.min(2, media.probe.audio?.channels ?? 1)), '-ar', '48000', '-c:a', 'pcm_s24le', part], { signal });
     afterLufs = lufsOf(p2.stderr);
     if (processed == null || afterLufs == null || Math.abs(o.targetLufs - afterLufs) <= 1) break;
     extra += o.targetLufs - afterLufs;
@@ -149,7 +205,7 @@ export async function cleanVoice(media: Pick<MediaAsset, 'path' | 'fingerprint' 
 
 /** Renders the narration with long pauses shortened (keep = source ranges kept, in order). Cached. */
 export async function renderTightened(media: Pick<MediaAsset, 'path' | 'fingerprint' | 'probe'>, keep: Interval[], cacheDir: string, signal?: AbortSignal): Promise<string> {
-  const key = crypto.createHash('sha256').update(JSON.stringify(['tight-v1', media.path, media.fingerprint.size, media.fingerprint.partialHash, keep.map((k) => [+k.start.toFixed(3), +k.end.toFixed(3)])])).digest('hex').slice(0, 20);
+  const key = crypto.createHash('sha256').update(JSON.stringify(['tight-v2', media.path, media.fingerprint.size, media.fingerprint.partialHash, keep.map((k) => [+k.start.toFixed(3), +k.end.toFixed(3)])])).digest('hex').slice(0, 20);
   const dir = path.join(cacheDir, 'voice');
   const out = path.join(dir, `tight-${key}.wav`);
   try {
@@ -161,10 +217,19 @@ export async function renderTightened(media: Pick<MediaAsset, 'path' | 'fingerpr
   await fsp.mkdir(dir, { recursive: true });
   // a filter script file: hundreds of ranges on a 60-minute narration would overflow a command line
   const script = `${out}.filter.txt`;
-  const sel = keep.map((k) => `between(t,${k.start.toFixed(4)},${k.end.toFixed(4)})`).join('+');
-  await fsp.writeFile(script, `aselect='${sel}',asetpts=N/SR/TB`);
+  // every kept piece fades in and out over 8 ms: the joins are inaudible (no click where two pieces meet)
+  const F = 0.008;
+  const parts = keep
+    .filter((k) => k.end - k.start > 0.02)
+    .map((k, i, all) => {
+      const len = k.end - k.start;
+      const fin = i > 0 ? `,afade=t=in:d=${F}` : '';
+      const fout = i < all.length - 1 ? `,afade=t=out:st=${Math.max(0, len - F).toFixed(4)}:d=${F}` : '';
+      return `[0:a]atrim=start=${k.start.toFixed(4)}:end=${k.end.toFixed(4)},asetpts=PTS-STARTPTS${fin}${fout}[k${i}]`;
+    });
+  await fsp.writeFile(script, `${parts.join(';\n')};\n${parts.map((_, i) => `[k${i}]`).join('')}concat=n=${parts.length}:v=0:a=1[out]`);
   const part = `${out}.part.wav`;
-  await ffmpeg(['-v', 'error', '-i', media.path, '-vn', '-filter_script:a', script, '-c:a', 'pcm_s24le', part], { signal });
+  await ffmpeg(['-v', 'error', '-i', media.path, '-vn', '-filter_complex_script', script, '-map', '[out]', '-c:a', 'pcm_s24le', part], { signal });
   await fsp.rename(part, out);
   return out;
 }

@@ -2,6 +2,21 @@
 
 ## Non publié
 
+### Voix « podcast » et installateur (14/11/2026)
+- **Débruitage neuronal DeepFilterNet3**, local, sur processeur et livré avec l'application. Il remplace le
+  débruitage spectral quand il est présent ; sa réduction se règle d'après le rapport voix/bruit mesuré.
+- **Expandeur doux** dans la voix radio : la compression ne remonte plus le souffle ni l'ambiance (rapport
+  voix/bruit 38 dB au lieu de 33,5 sur la narration « Apocalypse »).
+- **Coupe automatique des silences par défaut** (pause de plus de 0,5 s ramenée à 0,32 s), avec des
+  raccords adoucis de 8 ms à chaque coupe, sans clic.
+- **Modèle de transcription choisi selon l'ordinateur** : medium, ou large-v3-turbo s'il est présent, à
+  partir de 6 cœurs. Sur la narration, il corrige tous les noms propres que « small » ratait.
+- **Installateur Windows** : la construction compile le débruiteur pour Windows, l'auto-test de
+  l'installation le vérifie.
+- **FFmpeg LGPL dans l'installateur** (plus aucun composant GPL). Sans x264, l'export utilise l'encodeur
+  H.264 de la carte graphique s'il passe un test réel, sinon AV1 (SVT-AV1) ou VP9 sur le processeur ;
+  proxys et animations internes passent en H.264 matériel ou en VP9.
+
 ### Comics réels, mode histoire et retouches en français (14/11/2026)
 - **PDF de comics** : chaque page est rendue en image (pdf.js et @napi-rs/canvas, licences libres) et lue
   comme une planche. Un PDF de texte (un script) est laissé de côté. Un dossier de pages numérotées est

@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { type MediaAsset, type MediaFingerprint, newId } from '../core';
+import { intermediateVideoArgs } from './videoEncoders';
 import { ffmpeg } from './ffmpeg';
 import { probeMedia } from './probe';
 
@@ -137,7 +138,7 @@ export async function makeProxy(asset: MediaAsset, dirs: CacheDirs, onProgress?:
   const args = ['-v', 'error', '-i', asset.path, '-progress', 'pipe:1', '-nostats'];
   if (asset.probe.video) {
     const r = asset.probe.video.frameRate;
-    args.push('-vf', `fps=${r.num}/${r.den},scale='min(1280,iw)':-2,format=yuv420p`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-g', '15');
+    args.push('-vf', `fps=${r.num}/${r.den},scale='min(1280,iw)':-2,format=yuv420p`, ...(await intermediateVideoArgs(20)), '-g', '15');
   } else {
     args.push('-vn');
   }

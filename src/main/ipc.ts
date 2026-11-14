@@ -40,6 +40,7 @@ import type { ExportOutcome, ExportRequest, ImportResult, OpenResult } from '../
 import { bundledWhisperCli, checkTranscriber } from '../engine/transcribe';
 import { checkOcr } from '../engine/ocr';
 import { subtitleDir } from '../core/captions';
+import { cpuExportEncoder } from '../engine/videoEncoders';
 import { writeCredits } from '../engine/webImages';
 import { MODEL_CATALOG, downloadModel, importModelFile, modelStatus, removeModel } from '../engine/models';
 import { forgetRecent, listRecent, loadSettings, pushRecent, saveSettings } from './settings';
@@ -265,7 +266,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('export:start', async (_e, req: ExportRequest) => {
     const settings = loadSettings();
     hwEncoders ??= probeHwEncoders();
-    const encoder = chooseEncoder(req.project.exportSettings.videoCodec, req.project.exportSettings.hardware, settings.performanceProfile, await hwEncoders);
+    const vc = req.project.exportSettings.videoCodec === 'hevc' ? 'hevc' : 'h264';
+    const encoder = chooseEncoder(req.project.exportSettings.videoCodec, req.project.exportSettings.hardware, settings.performanceProfile, await hwEncoders, await cpuExportEncoder(vc));
     const { id } = orchestrator.submit({
       type: 'export',
       label: `Export · ${path.basename(req.output)}`,

@@ -28,7 +28,7 @@ export interface VoiceQuality {
 }
 
 export interface VoiceStep {
-  id: 'highpass' | 'hum' | 'denoise' | 'gain' | 'deess' | 'mud' | 'presence' | 'compress' | 'warmth' | 'air' | 'level';
+  id: 'highpass' | 'hum' | 'denoise' | 'gain' | 'expand' | 'deess' | 'mud' | 'presence' | 'compress' | 'warmth' | 'air' | 'level';
   filter: string;
   reason: string;
 }
@@ -209,6 +209,9 @@ export function planVoiceChain(q: VoiceQuality, opts: Partial<VoiceCleanupOption
   // dynamics (de-esser, compressor) have absolute thresholds: bring the voice to a nominal level first
   const pre = Math.max(-12, Math.min(24, -18 - q.speechDb));
   if (Math.abs(pre) >= 1) steps.push({ id: 'gain', filter: `volume=${pre.toFixed(1)}dB`, reason: `crêtes de voix à ${q.speechDb} dBFS : ${pre > 0 ? '+' : ''}${pre.toFixed(1)} dB avant le traitement dynamique pour que ses seuils agissent comme prévu` });
+  // radio voice: a gentle downward expander after the gain: what lies well under the voice (breaths, room,
+  // what the denoiser left) is lowered by up to 12 dB, so the compression that follows does not lift it
+  if (o.style === 'radio' && o.strength > 0) steps.push({ id: 'expand', filter: 'agate=threshold=0.012:ratio=2:range=0.25:attack=8:release=180:knee=4', reason: 'voix radio : expandeur doux (−12 dB au plus sous la voix) pour que la compression ne remonte pas le souffle et l’ambiance' });
   if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: `deesser=i=${q.sibilanceDb > 2 ? 1 : 0.7}:m=0.5:f=0.5`, reason: `sibilance forte (5–9 kHz à ${q.sibilanceDb} dB par rapport à la voix)` });
   if (q.mudDb > 8 && o.strength > 0) steps.push({ id: 'mud', filter: 'equalizer=f=320:t=q:w=1.1:g=-3', reason: `bas-médiums chargés (200–500 Hz ${q.mudDb} dB au-dessus de la présence)` });
   else if (q.mudDb > -2 && q.mudDb <= 8 && q.sibilanceDb < -18 && o.strength > 0) steps.push({ id: 'presence', filter: 'equalizer=f=3200:t=q:w=1:g=2', reason: 'voix terne (peu de présence et d’air) : +2 dB à 3,2 kHz' });

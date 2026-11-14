@@ -97,7 +97,7 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   narrationLufs: -16,
   voiceCleanup: true,
   autoDirection: true,
-  tightenPauses: false,
+  tightenPauses: true,
   cutDisfluencies: true,
   avoidRepeatWithin: 4,
   fillUnrelated: false,

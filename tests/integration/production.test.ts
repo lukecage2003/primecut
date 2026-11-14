@@ -59,7 +59,7 @@ describe('Script-to-Video', () => {
     project.media[narr.id] = narr;
     const stages: string[] = [];
     const res = await produceVideo(
-      { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } },
+      { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5, tightenPauses: false } },
       (_, m) => stages.at(-1) !== m && stages.push(m), // finer progress inside a stage repeats its label
     );
     expect(stages.filter((x) => !x.startsWith('Rendu'))).toEqual(['Analyse de la narration', 'Nettoyage de la voix', 'Synchronisation du texte et de la voix', 'Indexation des médias', 'Direction de P-CORE', 'Construction du montage', 'Contrôle qualité', expect.stringMatching(/Contrôle qualité \d+/)]);
@@ -185,7 +185,7 @@ describe('faceless production with no illustrations at all', () => {
     const project = createProject('Faceless', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
     const narr = await importMediaFile(narrationFile, dir);
     project.media[narr.id] = narr;
-    const res = await produceVideo({ project, projectDir: path.join(dir, 'faceless'), script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } });
+    const res = await produceVideo({ project, projectDir: path.join(dir, 'faceless'), script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5, tightenPauses: false } });
     const seq = res.sequence;
     expect(seq.production!.shots.every((s) => s.quality === 'generated')).toBe(true);
     for (const m of res.newMedia) {
@@ -286,13 +286,13 @@ describe('hesitations and repetitions', () => {
     const narr = await importMediaFile(n.file, d);
     project.media[narr.id] = narr;
     const base = { project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], transcript };
-    const reported = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: false } });
+    const reported = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: false, tightenPauses: false } });
     const note = reported.sequence.production!.qcIssues.find((i) => i.code === 'disfluency')!;
     expect(note.message).toMatch(/2 hésitation\(s\) ou répétition\(s\)/);
     expect(note.message).toMatch(/« euh »/);
     expect(reported.newMedia.some((m) => m.derived)).toBe(false); // option off: reported, nothing removed
 
-    const cut = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: true } });
+    const cut = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: true, tightenPauses: false } });
     const clip = cut.sequence.tracks.flatMap((t) => t.clips).find((c) => cut.newMedia.find((m) => m.id === c.mediaId)?.derived)!;
     const copy = cut.newMedia.find((m) => m.id === clip.mediaId)!;
     expect(copy.name).toMatch(/voix resserrée/);

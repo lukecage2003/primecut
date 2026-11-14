@@ -15,6 +15,11 @@ jobs:
       - run: npm run typecheck
       - name: Built-in transcription engine (whisper.cpp, static build of the pinned tag)
         run: node scripts/fetch-whisper.mjs
+      - name: Neural speech denoiser (DeepFilterNet3 via deep-filter-rt, MIT/Apache, model embedded)
+        run: |
+          rustup update stable
+          cargo build --release --locked --manifest-path tools/denoise/Cargo.toml
+          mkdir -p vendor/denoise && cp tools/denoise/target/release/primestone-denoise vendor/denoise/
       - name: Cache the official Whisper small model
         uses: actions/cache@v4
         with: { path: '${{ runner.temp }}/models', key: whisper-ggml-small-55356645c2b361a969dfd0ef2c5a50d530afd8d5 }
@@ -36,9 +41,17 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: node scripts/fetch-ffmpeg.mjs gpl
+      - name: FFmpeg LGPL (no GPL component; exports use the graphics card or AV1/VP9 on the processor)
+        run: node scripts/fetch-ffmpeg.mjs lgpl
       - name: Built-in transcription engine (whisper.cpp, static build of the pinned tag)
         run: node scripts/fetch-whisper.mjs
+      - name: Neural speech denoiser (DeepFilterNet3 via deep-filter-rt, MIT/Apache, model embedded)
+        shell: pwsh
+        run: |
+          rustup update stable
+          cargo build --release --locked --manifest-path tools/denoise/Cargo.toml
+          New-Item -ItemType Directory -Force vendor/denoise | Out-Null
+          Copy-Item tools/denoise/target/release/primestone-denoise.exe vendor/denoise/
       - name: Unit + integration tests (bundled FFmpeg)
         env: { PRIMESTONE_FFMPEG_DIR: '${{ github.workspace }}\vendor\ffmpeg' }
         run: npm test
