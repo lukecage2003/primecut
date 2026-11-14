@@ -74,3 +74,44 @@ Honest list; each item has a planned phase.
   report; the type can be forced).
 - Comics format detection relies on gutters between panels: borderless or overlapping panels are
   not found; a coloured manga is read left to right unless its file name says manga/chapitre.
+
+## Matching, decisions and analysis (13/11/2026)
+- Pictures are matched on metadata (file name, tags, folder, comic references), user descriptions and,
+  when Tesseract is installed and enabled, OCR text. **No model looks at the pixels**: a character drawn
+  in a picture named `IMG_0042.jpg` is not recognised. The interface says so and caps metadata-only
+  confidence at 75 %.
+- Relevance has **not been measured on real data**: the benchmark tools exist (docs/BENCHMARK.md), the
+  annotated datasets do not yet.
+- OCR on comic lettering (capitals, stylised fonts, sound effects) is often poor; its confidence is shown.
+  The real OCR integration test is skipped where Tesseract is absent (as in the development container).
+- Panel detection relies on gutters (XY-cut). Borderless panels, slanted gutters and art across gutters
+  give a low confidence; it has not been measured on real pages yet.
+- Music per section switches tracks on a pause of the voice with a fade out then a fade in (no
+  overlapping crossfade: both beds share one audio track).
+- The media index is a JSON file (fine for thousands of files; not yet measured beyond 10 000).
+- Script structure is read with explicit French rules; unknown names (not in the dictionary nor repeated in
+  the script) are not recognised as entities.
+
+## Comics réels et retouches (14/11/2026)
+- **Découpe des cases** : sur 139 pages réelles (Avengers 2013 n° 1 à 3, Black Panther 2018 n° 1 et 2) :
+  - 105 pages sont lues case par case ;
+  - 18 sont jugées incertaines et montrées entières, puis parcourues, sans découpe ;
+  - 11 sont classées générique (titres, crédits, publicités) ;
+  - 5 sont des couvertures.
+
+  Quand c'est ambigu, plusieurs images peuvent partager un même grand cadre : c'est voulu, pour ne jamais
+  couper une case. Les cases superposées à une image en fond perdu ne sont pas séparées.
+- **Détecteur de bulles** : il sert de garde-fou (4 bulles ou plus = page d'histoire). Il rate des bulles
+  sur certaines pages sombres et voit parfois des « bulles » dans une publicité.
+- **OCR** : le lettrage des comics reste difficile pour Tesseract, surtout les onomatopées et les polices
+  stylisées. Le texte anglais des bulles n'aide à caler une page sur une narration française que par les
+  noms propres.
+- **Retouches en français** : seules les consignes sur les réglages sont comprises (plans, cases,
+  musique, voix, sous-titres, titres, noms, logo, mouvement, fondus, pauses, hésitations, ordre des pages).
+  Une consigne qui vise un instant précis (« à 0:32 mets la page 12 ») n'est pas encore comprise :
+  utilisez `[VISUEL: page 12]` dans le script.
+- **Analyse d'une vidéo YouTube par son lien** : non prise en charge. Le téléchargement est contraire aux
+  conditions d'utilisation de YouTube et bloqué par sa vérification anti-robot. L'analyse se fait sur un
+  fichier vidéo présent sur l'ordinateur.
+- **Dicter une retouche** : le micro passe par la permission de l'application, puis la transcription locale
+  (Whisper). Cette dictée n'a pas été testée avec un vrai micro dans l'environnement de test.

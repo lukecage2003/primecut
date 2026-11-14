@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BrowserWindow, Menu, app, nativeTheme } from 'electron';
+import { BrowserWindow, Menu, app, nativeTheme, session } from 'electron';
 import { resolveFfmpeg, setFfmpegPaths } from '../engine/ffmpeg';
 import { bundledWhisperCli, setBundledWhisperCli } from '../engine/transcribe';
 import { registerIpc } from './ipc';
@@ -67,6 +67,8 @@ app.whenReady().then(() => {
   // whisper.cpp shipped with the app (built-in transcription, no Python)
   const exe = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
   setBundledWhisperCli(app.isPackaged ? path.join(process.resourcesPath, 'whisper', exe) : path.join(app.getAppPath(), 'vendor', 'whisper', exe));
+  // only the microphone (spoken edit instructions, transcribed locally) may be requested by the window
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done, details) => done(permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.every((t) => t === 'audio') !== false));
   if (!process.env.PRIMESTONE_DEVTOOLS) Menu.setApplicationMenu(null);
   registerMediaProtocol();
   registerIpc(() => mainWindow, () => (closeAllowed = true));

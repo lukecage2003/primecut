@@ -163,7 +163,7 @@ describe('schema v1 → current migration', () => {
       }
     for (const s of Object.values(p.sequences) as any[]) delete s.captions;
     const m = migrateProject(p);
-    expect(m.schemaVersion).toBe(3);
+    expect(m.schemaVersion).toBe(4);
     expect(validateProject(m)).toEqual([]);
     const s = m.sequences[m.activeSequenceId]!;
     expect(s.tracks[0]!.clips[0]!.fadeIn).toBe(0);

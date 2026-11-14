@@ -42,6 +42,17 @@ test('script + narration + folder → generated video', async () => {
   await expect(page.getByTestId('production-report')).toContainText('spider-man-bouffon-vert.png');
   const score = Number((await page.getByTestId('qc-score').innerText()).split('/')[0]);
   expect(score).toBeGreaterThanOrEqual(70);
+  // edit decisions: listed with their evidence, lockable, and the lock is one undoable step shown on the timeline
+  await expect(page.getByTestId('decision-list')).toContainText('Le contenu des images n’est pas analysé');
+  expect(await page.getByTestId('decision').count()).toBeGreaterThanOrEqual(2);
+  await expect(page.getByTestId('decision').first()).toContainText(/nom du fichier|composition/);
+  await page.getByTestId('decision-lock').first().click();
+  await expect(page.locator('[data-testid="decision"][data-state="verrouillée"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="clip"][data-decision-state="locked"]')).toHaveCount(1);
+  if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('decision-list').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '12-decisions.png') });
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('[data-testid="clip"][data-decision-state="locked"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="decision"][data-state="verrouillée"]')).toHaveCount(0);
   // the narration was cleaned into a derived copy; switching back to the original is one undoable edit
   await expect(page.getByTestId('voice-report')).toContainText('LUFS');
   if (process.env.PRIMESTONE_SHOTS) await page.getByTestId('production-report').screenshot({ path: path.join(process.env.PRIMESTONE_SHOTS, '06b-report-voice.png') });
@@ -85,8 +96,11 @@ test('script + narration + folder → generated video', async () => {
   expect(Number(probe.format.duration)).toBeGreaterThan(6);
   expect(probe.streams.map((s: { codec_type: string }) => s.codec_type).sort()).toEqual(['audio', 'video']);
   // subtitle files written next to the video
-  expect(fs.readFileSync(out.replace(/\.mp4$/, '.srt'), 'utf8')).toMatch(/^1\n00:00:\d\d,\d{3} --> .*\nSpider-Man/);
-  expect(fs.readFileSync(out.replace(/\.mp4$/, '.vtt'), 'utf8').startsWith('WEBVTT')).toBe(true);
+  // subtitle files are NOT next to the video under its own name (players would show them on top of the burned-in ones)
+  expect(fs.existsSync(out.replace(/\.mp4$/, '.srt'))).toBe(false);
+  const subDir = out.replace(/\.mp4$/, ' — sous-titres (pour YouTube, TikTok)');
+  expect(fs.readFileSync(path.join(subDir, 'auto.srt'), 'utf8')).toMatch(/^1\n00:00:\d\d,\d{3} --> .*\nSpider-Man/);
+  expect(fs.readFileSync(path.join(subDir, 'auto.vtt'), 'utf8').startsWith('WEBVTT')).toBe(true);
 
   // save and reopen keeps the generated version and its report
   await page.keyboard.press('Control+s');
@@ -106,6 +120,14 @@ test('faceless: no images → motion design shots, editable and re-rendered from
   await page.getByTestId('generate').click();
   await expect(page.getByTestId('production-panel')).toHaveCount(0, { timeout: 120000 });
   await expect(page.getByTestId('production-report')).toContainText('animation :');
+  // P-CORE V2 direction is in the report; locking a reaction re-renders its clip and is one undoable step
+  await expect(page.getByTestId('pcore-direction')).toBeVisible();
+  const cues = page.getByTestId('pcore-cue');
+  expect(await cues.count()).toBeGreaterThanOrEqual(2);
+  await cues.first().getByTestId('pcore-cue-lock').click();
+  await expect(page.locator('[data-testid="pcore-cue"][data-state="verrouillée"]')).toHaveCount(1);
+  await expect(page.getByTestId('undo')).toHaveAttribute('title', /Rendu de P-CORE/, { timeout: 120000 });
+  await expect(page.locator('[data-testid="pcore-tick"]').first()).toBeAttached();
   // P-CORE leads where there is no illustration: its own clip(s) on V2
   expect(await page.locator('[data-testid="clip"]', { hasText: 'P-CORE' }).count()).toBeGreaterThanOrEqual(1);
   // the viewer shows a rendered composition, never black
@@ -146,6 +168,14 @@ test('P-CORE Studio: audio response, preview render with transparency, independe
   await expect(page.getByTestId('pcore-export-check')).toContainText('alpha 0–255', { timeout: 300000 });
   await expect(page.getByTestId('pcore-export-check')).toContainText(/Haute qualité : rendu en [\d.]+ s/);
   await expect(page.getByTestId('pcore-fixed')).toBeVisible();
+  // V2 studio: the director's choices on the window, presets, tabs and the measured render
+  await expect(page.getByTestId('pcore-window-cues')).toContainText('Éveil');
+  await page.getByTestId('pcore-preset-cinematic').click();
+  await expect(page.getByTestId('pcore-preset-cinematic')).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('pcore-tab-expressions').click();
+  await expect(page.getByTestId('pcore-expression')).toHaveCount(12);
+  await page.getByTestId('pcore-tab-performance').click();
+  await expect(page.getByTestId('pcore-performance')).toContainText('images/s');
   const probe = JSON.parse((await ffprobe(['-v', 'error', '-show_entries', 'stream=codec_name,pix_fmt', '-of', 'json', out])).stdout.toString());
   expect(probe.streams[0].codec_name).toBe('prores');
   expect(probe.streams[0].pix_fmt).toMatch(/^yuva/);

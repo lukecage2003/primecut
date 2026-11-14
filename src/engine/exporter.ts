@@ -161,8 +161,11 @@ export function buildExportPlan(
       const Y = tt(pathExpr(padded, 'y', itemSec));
       const PW = tt(pathExpr(padded, 'w', itemSec));
       const PH = tt(pathExpr(padded, 'h', itemSec));
+      // pictures: the area around the page is transparent, a blurred copy of the page shows through (no black bands)
+      const soft = it.media.kind === 'image';
+      if (soft) chain.push('format=yuva420p');
       chain.push(
-        `pad=w=trunc(iw*${1 + 2 * E.x}/2)*2:h=trunc(ih*${1 + 2 * E.y}/2)*2:x=iw*${E.x}:y=ih*${E.y}:color=0x08080A`,
+        `pad=w=trunc(iw*${1 + 2 * E.x}/2)*2:h=trunc(ih*${1 + 2 * E.y}/2)*2:x=iw*${E.x}:y=ih*${E.y}:color=${soft ? '0x00000000' : '0x08080A'}`,
         `scale=w='trunc(${W}/(${PW})/2)*2':h='trunc(${H}/(${PH})/2)*2':eval=frame:flags=bicubic`,
         `crop=${W}:${H}:x='min(iw-${W},max(0,(${X})*iw))':y='min(ih-${H},max(0,(${Y})*ih))'`,
       );
@@ -194,6 +197,19 @@ export function buildExportPlan(
     if (p.fin > 0) fades.push(`fade=t=in:s=0:n=${p.fin}:alpha=1`);
     if (p.fout > 0) fades.push(`fade=t=out:s=${p.frames - p.fout}:n=${p.fout}:alpha=1`);
     const offset = `setpts=PTS+${f6(framesToSeconds(p.start, r))}/TB`;
+    if (panelsFull && it.media.kind === 'image') {
+      const head = chain.slice(0, 4).join(',');
+      filters.push(`[${idx}:v]${head},split[s${idx}a][s${idx}b]`);
+      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=${Math.round(H / 30)}:2,eq=brightness=-0.16:saturation=0.8,setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
+      const nb = `ov${ov++}`;
+      filters.push(`[${last}][bg${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nb}]`);
+      last = nb;
+      filters.push(`[s${idx}b]${chain.slice(4).join(',')}[v${idx}]`);
+      const nx = `ov${ov++}`;
+      filters.push(`[${last}][v${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nx}]`);
+      last = nx;
+      continue;
+    }
     if (panelsFull) {
       filters.push(`[${idx}:v]${chain.join(',')}[v${idx}]`);
       const nx = `ov${ov++}`;

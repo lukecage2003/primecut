@@ -1,5 +1,8 @@
 # P-CORE — voice-reactive digital presence
 
+> **P-CORE V2** (layered entity, narrative director, presence engine): see `docs/PCORE_V2.md`. This document
+> describes V1.1, which still renders every clip created before V2.
+
 P-CORE is the creator's visual presence in faceless videos: the official Primestone logo as a live
 3D entity that reacts to the real narration. It is procedural (no pre-rendered loop, no AI image
 generation), deterministic (same parameters → same frames) and runs offline.

@@ -34,6 +34,14 @@ export interface VisualContext {
   speechSec: number;
   durationSec: number;
   style: VisualStyle;
+  /** Subtitles are burned in: never repeat the narration's words inside a composition (double text). */
+  subtitles?: boolean;
+  /** A section title is centred on screen during this shot: no text-bearing composition under it. */
+  titleOnScreen?: boolean;
+  /** Names already presented by a card recently: not presented again so soon (no repetition). */
+  recentCards?: ReadonlySet<string>;
+  /** Presenter mode: P-CORE leads; backgrounds are ambient and carry no text. */
+  presenter?: boolean;
 }
 
 export function yearsIn(text: string): string[] {
@@ -76,12 +84,28 @@ export function decideVisual(beat: Beat, ctx: VisualContext): VisualDecision {
   if (KW.drama.test(t) || /!\s*$/.test(beat.text.trim())) {
     candidates.push({ level: 4, reason: 'passage dramatique', spec: { kind: 'dramatic', style: 'crimson', seed, intensity: 0.9 } });
   }
-  if (ctx.speechSec < Math.min(1.2, ctx.durationSec * 0.35) && firstWords.length > 8) {
+  // the first words of the narration as a big card only when they are NOT also subtitled (double text)
+  if (!ctx.subtitles && ctx.speechSec < Math.min(1.2, ctx.durationSec * 0.35) && firstWords.length > 8) {
     candidates.push({ level: 5, reason: 'pause / phrase clé', spec: { kind: 'typography', style: ctx.style, seed, title: firstWords, intensity: 0.4 } });
   }
   candidates.push({ level: 4, reason: 'pas d’illustration : visuel réactif à la voix', spec: { kind: 'audio-hud', style: ctx.style, seed, intensity: 0.7 } });
+  // a second text-free fallback so two shots in a row never repeat the same composition
+  candidates.push({ level: 4, reason: 'pas d’illustration : matrice de données (sans texte)', spec: { kind: 'data-matrix', style: ctx.style === 'hologram' ? 'gold' : 'hologram', seed, intensity: 0.5 } });
+  // a centred section title must not sit on top of another text (cards, timelines, typography)
+  const TEXT_KINDS = new Set(['typography', 'character-card', 'timeline', 'data-matrix']);
+  if (ctx.presenter) {
+    const AMBIENT = new Set(['audio-hud', 'cosmic', 'data-matrix', 'dramatic']);
+    const amb = candidates.filter((c) => AMBIENT.has(c.spec.kind)).map((c) => ({ ...c, spec: { ...c.spec, title: undefined, intensity: Math.min(0.6, c.spec.intensity ?? 0.5) } }));
+    const pickA = amb.find((c) => c.spec.kind !== ctx.previous) ?? amb[0]!;
+    return { ...pickA, reason: `${pickA.reason} (fond d’ambiance : P-CORE présente)` };
+  }
+  const fresh = candidates.filter((c) => !(c.spec.kind === 'character-card' && c.spec.title && ctx.recentCards?.has(c.spec.title.toLowerCase())));
+  const allowed0 = fresh.length ? fresh : candidates;
+  const allowed = ctx.titleOnScreen
+    ? allowed0.filter((c) => !TEXT_KINDS.has(c.spec.kind) || c.spec.kind === 'data-matrix').map((c) => (c.spec.kind === 'data-matrix' ? { ...c, spec: { ...c.spec, title: undefined } } : c))
+    : allowed0;
   // anti-repetition: avoid the same composition twice in a row when an alternative exists
-  const pick = candidates.find((c) => c.spec.kind !== ctx.previous) ?? candidates[0]!;
+  const pick = allowed.find((c) => c.spec.kind !== ctx.previous) ?? allowed[0] ?? candidates[0]!;
   if (pick.spec.kind === ctx.previous) pick.spec.style = pick.spec.style === 'gold' ? 'hologram' : 'gold';
   return pick;
 }

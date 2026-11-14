@@ -52,6 +52,25 @@ export interface ProductionPreferences {
   cutDisfluencies: boolean;
   /** A media item is not reused within this many shots when alternatives exist. */
   avoidRepeatWithin: number;
+  /** Place pictures with no relation at all to the passage (off: compositions or placeholders instead). */
+  fillUnrelated: boolean;
+  /** Choose the music per section from the local music library (when no track is imposed). */
+  musicFromLibrary: boolean;
+  /** Regeneration keeps the proposals of passages whose text did not change. */
+  keepUnchanged: boolean;
+  /** Below this confidence (0..1) an automatic choice is listed for review. */
+  reviewThreshold: number;
+  /** Faceless videos without pictures: P-CORE stays central and continuous, calm backgrounds, names as
+   *  name cards, chapter titles in the P-CORE data matrix (no back-and-forth to a corner). */
+  presenter: boolean;
+  /** With pictures: P-CORE is a discreet animated badge (one continuous clip in a corner), never in the way. */
+  pcoreBadge: boolean;
+  /** Opt-in: search freely licensed pictures on the Internet when the library lacks them (sends search words only). */
+  webImages: boolean;
+  /** Story mode: the pages of a comic book follow the narration in reading order ('auto': when books are most of the pictures). */
+  storyOrder: 'auto' | 'on' | 'off';
+  /** Voice processing: corrective cleanup only, or a broadcast ("radio") voice. */
+  voiceStyle: 'natural' | 'radio';
 }
 
 export const DEFAULT_PREFERENCES: ProductionPreferences = {
@@ -79,8 +98,17 @@ export const DEFAULT_PREFERENCES: ProductionPreferences = {
   voiceCleanup: true,
   autoDirection: true,
   tightenPauses: false,
-  cutDisfluencies: false,
+  cutDisfluencies: true,
   avoidRepeatWithin: 4,
+  fillUnrelated: false,
+  musicFromLibrary: true,
+  keepUnchanged: true,
+  reviewThreshold: 0.45,
+  presenter: true,
+  pcoreBadge: true,
+  webImages: false,
+  storyOrder: 'auto',
+  voiceStyle: 'radio',
 };
 
 /** Observable style of an edit (generated or user-modified). */

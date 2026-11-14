@@ -38,6 +38,9 @@ import {
 } from '../engine';
 import type { ExportOutcome, ExportRequest, ImportResult, OpenResult } from '../shared/api';
 import { bundledWhisperCli, checkTranscriber } from '../engine/transcribe';
+import { checkOcr } from '../engine/ocr';
+import { subtitleDir } from '../core/captions';
+import { writeCredits } from '../engine/webImages';
 import { MODEL_CATALOG, downloadModel, importModelFile, modelStatus, removeModel } from '../engine/models';
 import { forgetRecent, listRecent, loadSettings, pushRecent, saveSettings } from './settings';
 
@@ -88,6 +91,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
   ipcMain.handle('settings:get', () => loadSettings());
   ipcMain.handle('settings:set', (_e, patch) => saveSettings(patch));
   ipcMain.handle('transcriber:check', (_e, cfg) => checkTranscriber(cfg));
+  ipcMain.handle('ocr:check', (_e, cfg) => checkOcr(cfg));
+  ipcMain.handle('ocr:pick', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const r = await dialog.showOpenDialog(win!, { title: 'Choisir tesseract', properties: ['openFile'], filters: process.platform === 'win32' ? [{ name: 'tesseract.exe', extensions: ['exe'] }] : [] });
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
   // local AI models: listed with size/licence; downloaded only on an explicit request from the UI
   const modelsDir = () => path.join(app.getPath('userData'), 'models');
   ipcMain.handle('models:list', async () => ({ catalog: MODEL_CATALOG, status: await modelStatus(modelsDir()), dir: modelsDir(), bundledEngine: !!bundledWhisperCli() }));
@@ -268,9 +277,20 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
         // subtitle files next to the video (same base name), only when the sequence has subtitles
         const seq = req.project.sequences[req.sequenceId];
         if (seq && req.project.exportSettings.subtitleFiles !== false && seq.captions.some((x) => x.style === 'subtitle')) {
+          // subtitles are burned into the picture: files with the video's exact name would be loaded on top by
+          // players (VLC, MPC, Films et TV) → double subtitles. They go in a separate folder, for upload only.
           const base = req.output.replace(/\.[^.\\/]+$/, '');
-          for (const f of ['srt', 'vtt'] as const) await fs.promises.writeFile(`${base}.${f}`, captionsToSubtitleFile(seq, f), 'utf8');
-          c.log(`subtitles: ${path.basename(base)}.srt / .vtt`);
+          const dir = subtitleDir(req.output);
+          await fs.promises.mkdir(dir, { recursive: true });
+          for (const f of ['srt', 'vtt'] as const) await fs.promises.writeFile(path.join(dir, `${path.basename(base)}.${f}`), captionsToSubtitleFile(seq, f), 'utf8');
+          c.log(`subtitles: ${path.basename(dir)}/ (.srt, .vtt)`);
+        }
+        // pictures found on the Internet: their credits (CC BY requires attribution) go next to the video
+        if (seq) {
+          const used = new Set(seq.tracks.flatMap((t) => t.clips.map((cl) => cl.mediaId)));
+          const rights = [...used].map((m) => req.project.media[m]?.rights).filter((r): r is NonNullable<typeof r> => !!r);
+          const creditsFile = `${req.output.replace(/\.[^.\\/]+$/, '')} — crédits images.txt`;
+          if (writeCredits(creditsFile, rights)) c.log(`credits: ${path.basename(creditsFile)}`);
         }
         const outcome: ExportOutcome = { output: req.output, encoder, frames: r.frames, durationSec: r.durationSec, width: r.width, height: r.height };
         exportResults.set(id, outcome);

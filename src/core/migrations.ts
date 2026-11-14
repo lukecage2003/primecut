@@ -2,7 +2,8 @@
  * Project schema migrations. Each entry upgrades a raw document from version N to N+1.
  * Documents newer than this build are refused rather than silently downgraded.
  */
-import { type Project, SCHEMA_VERSION } from './model';
+import { type Project, type Sequence, SCHEMA_VERSION } from './model';
+import { graphFromShots } from './edg';
 
 export type Migration = (doc: Record<string, unknown>) => Record<string, unknown>;
 
@@ -28,6 +29,19 @@ export const MIGRATIONS: Record<number, Migration> = {
     for (const seq of Object.values((doc.sequences ?? {}) as Record<string, AnyRec>)) {
       seq.captions ??= [];
       for (const t of (seq.tracks ?? []) as AnyRec[]) for (const c of (t.clips ?? []) as AnyRec[]) c.motion ??= { kind: 'none', amount: 0 };
+    }
+    return doc;
+  },
+  /** v3 → v4: edit decision graph for generated versions (rebuilt from their production record; nothing removed). */
+  3: (doc) => {
+    for (const seq of Object.values((doc.sequences ?? {}) as Record<string, AnyRec>)) {
+      const p = seq.production as AnyRec | undefined;
+      if (!p || p.edg || !Array.isArray(p.shots)) continue;
+      try {
+        p.edg = graphFromShots(seq as unknown as Sequence);
+      } catch {
+        /* a damaged production record keeps working without a graph */
+      }
     }
     return doc;
   },

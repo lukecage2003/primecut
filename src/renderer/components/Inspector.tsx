@@ -3,7 +3,10 @@ import { type Clip, DEFAULT_DUCK, DEFAULT_TRANSFORM, type Sequence, findClip, fr
 import { clearPreview, deleteSelectedTransition, edit, learnFromEdits, previewEdit, setPlayhead, updateVisual } from '../actions';
 import { VISUAL_KINDS } from '../../core';
 import { compareVersions, versionMetrics } from '../../production/compare';
+import { reviewQc } from '../../production/qc';
 import { store } from '../store';
+import { ClipDecision, DecisionList, MediaInsight } from './Decisions';
+import { PCoreDirection } from './PCoreV2';
 import { currentProject, currentSequence, useEditor } from '../store';
 
 function Slider({ label, value, min, max, step, fmt, onPreview, onCommit, testid }: {
@@ -160,6 +163,8 @@ export function Inspector() {
                 </button>
               )}
             </div>
+            <ClipDecision clipId={primary.clip.id} />
+            {video && project.media[video.clip.mediaId] && <MediaInsight m={project.media[video.clip.mediaId]!} />}
             <div className="section-title">Fondus</div>
             {(['fadeIn', 'fadeOut'] as const).map((k) => (
               <Slider
@@ -212,8 +217,19 @@ export function Inspector() {
                 <div className="insp-row">
                   <label>Mouvement</label>
                   <select className="input" data-testid="insp-motion" value={video.clip.motion?.kind ?? 'none'} onChange={(e) => setProps(video.clip.id, { motion: { kind: e.target.value as never, amount: e.target.value === 'none' ? 0 : video.clip.motion?.amount || 0.12 } }, 'Mouvement de caméra', true)}>
-                    {['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down'].map((k) => (
-                      <option key={k} value={k}>{k}</option>
+                    {(
+                      [
+                        ['none', 'Aucun'],
+                        ['zoom-in', 'Zoom avant'],
+                        ['zoom-out', 'Zoom arrière'],
+                        ['pan-left', 'Panoramique vers la gauche'],
+                        ['pan-right', 'Panoramique vers la droite'],
+                        ['pan-up', 'Panoramique vers le haut'],
+                        ['pan-down', 'Panoramique vers le bas'],
+                        ...(video.clip.motion?.kind === 'panels' ? [['panels', 'Lecture case par case']] : []),
+                      ] as [string, string][]
+                    ).map(([k, l]) => (
+                      <option key={k} value={k}>{l}</option>
                     ))}
                   </select>
                   <span />
@@ -253,6 +269,8 @@ function ProductionReport() {
   const p = seq.production!;
   const rate = seq.settings.frameRate;
   const sec = (f: number) => (f * rate.den) / rate.num;
+  // editorial review is recomputed live: accepting, rejecting or replacing updates it at once
+  const issues = [...p.qcIssues.filter((i) => !i.code.startsWith('review-')), ...reviewQc(seq, media, { reviewThreshold: 0.45 })];
   return (
     <div className="insp" data-testid="production-report">
       <div className="section-title">Version générée · v{p.version}</div>
@@ -262,7 +280,7 @@ function ProductionReport() {
         <dt>Synchro</dt>
         <dd>{p.alignment.method === 'transcript' ? 'mot à mot' : 'pauses'} · {Math.round(p.alignment.confidence * 100)}%</dd>
         <dt>Plans</dt>
-        <dd>{p.shots.length} ({p.shots.filter((s) => s.quality === 'strong').length} specific)</dd>
+        <dd>{p.shots.length} ({p.shots.filter((s) => s.quality === 'strong').length} avec correspondance précise de nom ou d’étiquette)</dd>
       </dl>
       <div className="row">
         <button className="btn" onClick={() => store.set({ overlay: 'production' })}>Régénérer…</button>
@@ -294,19 +312,47 @@ function ProductionReport() {
         </div>
       )}
       {p.voice && <VoiceReport />}
-      {p.qcIssues.length > 0 && <div className="section-title">Contrôle qualité</div>}
-      {p.qcIssues.map((i, k) => (
-        <div key={k} className={`issue ${i.severity}`} onClick={() => i.frame !== undefined && setPlayhead(i.frame)}>
+      {issues.length > 0 && <div className="section-title">Contrôle qualité</div>}
+      {issues.map((i, k) => (
+        <div key={k} className={`issue ${i.severity}`} data-code={i.code} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && i.frame !== undefined && setPlayhead(i.frame)} onClick={() => i.frame !== undefined && setPlayhead(i.frame)}>
           {i.severity === 'error' ? '●' : i.severity === 'warning' ? '▲' : 'ℹ'} {i.message}
         </div>
       ))}
-      <div className="section-title">Plans — pourquoi chaque image</div>
-      {p.shots.map((s, k) => (
-        <div key={k} className={`report-shot ${s.quality}`} onClick={() => setPlayhead(s.start)} title={s.text}>
-          <b>{sec(s.start).toFixed(1)}s</b> · {s.mediaId ? media[s.mediaId]?.name : 'missing visual'}
-          <div className="tiny">{s.reasons.join(' · ')}</div>
+      {p.narrative && p.narrative.length > 0 && (
+        <details data-testid="narrative">
+          <summary className="section-title">Structure du script ({p.narrative.length} sections)</summary>
+          {p.narrative.map((n) => (
+            <div key={n.section} className="tiny">
+              <b>{n.title}</b> : {n.label} ({Math.round(n.confidence * 100)} %, intensité {Math.round(n.intensity * 100)} %) — {n.evidence.slice(0, 2).join(' ; ')}
+            </div>
+          ))}
+          <div className="tiny muted">Lecture par règles explicites (indices ci-dessus) : aucune information n’est ajoutée au script.</div>
+        </details>
+      )}
+      {p.music && p.music.length > 0 && (
+        <div data-testid="music-plan">
+          <div className="section-title">Musique par section</div>
+          {p.music.map((m, i) => (
+            <div key={i} className="tiny" onClick={() => setPlayhead(Math.round((m.start * seq.settings.frameRate.num) / seq.settings.frameRate.den))} style={{ cursor: 'pointer' }}>
+              {m.start.toFixed(0)}–{m.end.toFixed(0)} s · <b>{m.title}</b> — {m.reasons.join(' · ')}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      <PCoreDirection />
+      {p.edg ? (
+        <DecisionList />
+      ) : (
+        <>
+          <div className="section-title">Plans — pourquoi chaque image</div>
+          {p.shots.map((s, k) => (
+            <div key={k} className={`report-shot ${s.quality}`} onClick={() => setPlayhead(s.start)} title={s.text}>
+              <b>{sec(s.start).toFixed(1)}s</b> · {s.mediaId ? media[s.mediaId]?.name : 'visuel manquant'}
+              <div className="tiny">{s.reasons.join(' · ')}</div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

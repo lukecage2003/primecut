@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CAPTION_METRICS, framesToTimecode, sequenceDuration } from '../../core';
+import { CAPTION_METRICS, captionBase, framesToTimecode, sequenceDuration } from '../../core';
 import { setPlayhead } from '../actions';
 import { pause, togglePlay } from '../playback';
 import { PreviewEngine } from '../preview';
@@ -106,6 +106,8 @@ export function Viewer() {
 
 /** Draws the active captions with the same relative metrics as the exported ASS styles. */
 function CaptionLayer({ height }: { height: number }) {
+  const seqSize = useEditor((e) => currentSequence(e).settings);
+  const currentW = (height * seqSize.width) / seqSize.height;
   // select a primitive key (stable snapshot), then resolve the captions
   const key = useEditor((e) =>
     currentSequence(e)
@@ -121,9 +123,12 @@ function CaptionLayer({ height }: { height: number }) {
       {caps.map((c) => {
         const m = CAPTION_METRICS[c.style];
         const [first, ...rest] = c.text.split('\n');
-        const style: React.CSSProperties = { fontSize: m.size * height };
-        if (c.style === 'subtitle') style.bottom = m.marginV * height;
-        if (c.style === 'lower-third') style.bottom = m.marginV * height;
+        // same reference size as the export (portrait formats scale on the width)
+        const sw = currentW;
+        const base = height > sw ? Math.min(height, sw * 1.2) : height;
+        const style: React.CSSProperties = { fontSize: m.size * base };
+        if (c.style === 'subtitle') style.bottom = m.marginV * base;
+        if (c.style === 'lower-third') style.bottom = m.marginV * base;
         return (
           <div key={c.id} className={`cap ${c.style}`} style={style} data-style={c.style}>
             {c.style === 'lower-third' ? (

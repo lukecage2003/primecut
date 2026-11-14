@@ -1,25 +1,33 @@
 # Reprise de session
 
-Branche : `claude/gallant-hawking-c8govj`. Avant tout : `npm ci && npm test` (138 tests + 1 ignoré),
+Branche : `claude/gallant-hawking-c8govj`. Avant tout : `npm ci && npm test` (tests unitaires et d’intégration ; 2 ignorés ici : OCR réel sans Tesseract, transcription whisper.cpp sans modèle),
 `npm run test:e2e` sous xvfb, puis vérifier le dernier run CI.
 
-## Fait dans la dernière session (MASTER EXECUTION V2)
-- P0 6.1 journal technique (`src/engine/log.ts`, `src/engine/deps.ts`, Réglages, diagnostic).
-- Correctif CI Windows (test CBZ), runs 33–35 documentés.
-- P1 hésitations et répétitions : mesure sur 3 transcriptions réelles. Sur la première version :
-  2 + 11 + 3 fausses alarmes (fins de phrase, listes, « oh lala lala »). Après correction : 0 + 1 + 0 ;
-  le seul cas restant, « de de », est plausible. Whisper n'a écrit aucun « euh ».
+## Fait dans la dernière session (réalisation de l'audit)
+- EDG (`src/core/edg.ts`) : décisions persistées dans `production.edg`, schéma 4 et migration.
+  Synchronisé avec la timeline (`reconcileGraph` dans `edit()`), annuler et rétablir, régénération qui
+  reprend verrous et rejets, interface `Decisions.tsx` et badges de la timeline.
+- Correspondances honnêtes (`planner.ts`) : preuves par origine, plafond de confiance pour les
+  métadonnées, aucune image sans rapport placée (`fillUnrelated`, désactivée par défaut).
+- Musique par section (`musicPlan.ts`, `narrative.ts`), index persistant des médias (`mediaIndex.ts`),
+  OCR Tesseract facultatif (`ocr.ts`), confiance du découpage des cases, contrôle éditorial `reviewQc`.
+- Benchmark réel : `docs/BENCHMARK.md`, `npm run bench`, `scripts/bench/annotate.html`.
+  Aucun résultat : données réelles absentes.
+- Correctif du glisser-déposer de fichiers dans la médiathèque (`'Files'`).
 
-## Prochain lot, dans l'ordre (voir ROADMAP_MASTER.md, chemin critique)
-1. FFmpeg minimal, étape 2 : libass (freetype, fribidi, harfbuzz avec meson, DirectWrite plutôt que
-   fontconfig), libmp3lame, en-têtes AMF, libvpl, jusqu'à 0 capacité manquante. L'étape 1 compile et
-   toutes les sources sont épinglées.
-   Ensuite : comparaison des exports avec le binaire BtbN.
-2. Musique dans la production : cible par section, score, transitions sur pauses, Remplacer/Verrouiller
-   (`docs/CONCEPTION_MUSIQUE.md` §3 à 6).
-3. EDG (`docs/ARCHITECTURE_CIBLE.md` §3.1) : à présenter avant de le coder (modification architecturale).
-4. Dès réception : vos pistes musicales (validation réelle) et vos annotations (`annotation/…/annotate.html`,
-   puis `npx tsx scripts/eval/hesitation-score.ts annotation/narration-spidey`).
+## P-CORE V2 (dernière mission)
+Code : `src/pcore/v2/*`, `src/pcore/sceneV2.ts`, placement étendu, `PCoreV2.tsx`. Documentation et mesures :
+`docs/PCORE_V2.md`. À faire sur votre PC : `npm run pcore:validate` (mesures GPU), puis une production
+avec votre vraie voix.
+
+## Prochain lot, dans l'ordre
+1. **Vos données** : 20 à 50 pages annotées (B1), 20 à 50 requêtes (B2), un projet réel noté plan par
+   plan (B4), 5 à 10 pistes musicales. Puis lancer `npm run bench` (v0, sans OCR), puis avec OCR.
+2. Selon B1 et B4 : choix d'un modèle d'embedding image-texte local (licence et taille à présenter avant
+   tout téléchargement) pour la recherche par description.
+3. FFmpeg minimal, étape 2 (libass, lame…), inchangé depuis la session précédente.
+4. EDG : recalcul ciblé d'une décision sans régénérer la version ; reprise d'une production interrompue.
+5. Musique : vrai fondu enchaîné entre deux pistes (deux pistes audio alternées).
 
 ## En attente de votre décision
 - Modèles pour la compréhension visuelle (OCR, embeddings) et, en option, un LLM local : liste et licences

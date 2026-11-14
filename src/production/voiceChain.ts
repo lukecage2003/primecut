@@ -28,7 +28,7 @@ export interface VoiceQuality {
 }
 
 export interface VoiceStep {
-  id: 'highpass' | 'hum' | 'denoise' | 'gain' | 'deess' | 'mud' | 'presence' | 'compress' | 'level';
+  id: 'highpass' | 'hum' | 'denoise' | 'gain' | 'deess' | 'mud' | 'presence' | 'compress' | 'warmth' | 'air' | 'level';
   filter: string;
   reason: string;
 }
@@ -40,9 +40,11 @@ export interface VoiceCleanupOptions {
   ceilingDb: number;
   /** 0 = only corrective steps (hum, rumble, level), 1 = default, up to 1.5 = stronger denoise. */
   strength: number;
+  /** 'natural': corrective cleanup; 'radio': broadcast voice (warmth, presence, air, firmer two-stage compression). */
+  style?: 'natural' | 'radio';
 }
 
-export const DEFAULT_VOICE_CLEANUP: VoiceCleanupOptions = { targetLufs: -16, ceilingDb: -1.5, strength: 1 };
+export const DEFAULT_VOICE_CLEANUP: VoiceCleanupOptions = { targetLufs: -16, ceilingDb: -1.5, strength: 1, style: 'natural' };
 
 // --- spectral analysis -------------------------------------------------------------------------
 
@@ -210,7 +212,13 @@ export function planVoiceChain(q: VoiceQuality, opts: Partial<VoiceCleanupOption
   if (q.sibilanceDb > -6 && o.strength > 0) steps.push({ id: 'deess', filter: `deesser=i=${q.sibilanceDb > 2 ? 1 : 0.7}:m=0.5:f=0.5`, reason: `sibilance forte (5–9 kHz à ${q.sibilanceDb} dB par rapport à la voix)` });
   if (q.mudDb > 8 && o.strength > 0) steps.push({ id: 'mud', filter: 'equalizer=f=320:t=q:w=1.1:g=-3', reason: `bas-médiums chargés (200–500 Hz ${q.mudDb} dB au-dessus de la présence)` });
   else if (q.mudDb > -2 && q.mudDb <= 8 && q.sibilanceDb < -18 && o.strength > 0) steps.push({ id: 'presence', filter: 'equalizer=f=3200:t=q:w=1:g=2', reason: 'voix terne (peu de présence et d’air) : +2 dB à 3,2 kHz' });
-  steps.push({ id: 'compress', filter: 'acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:knee=4', reason: 'compression douce : égalise le niveau entre passages forts et faibles' });
+  if (o.style === 'radio' && o.strength > 0) {
+    // broadcast voice: body, intelligibility and air, measured so nothing already present is pushed further
+    if (q.mudDb <= 4) steps.push({ id: 'warmth', filter: 'equalizer=f=140:t=q:w=0.9:g=2.5', reason: 'voix radio : rondeur dans les graves (+2,5 dB à 140 Hz)' });
+    if (!steps.some((x) => x.id === 'presence') && q.sibilanceDb < -4) steps.push({ id: 'presence', filter: 'equalizer=f=3500:t=q:w=1.2:g=3', reason: 'voix radio : présence et intelligibilité (+3 dB à 3,5 kHz)' });
+    if (q.sibilanceDb < -10) steps.push({ id: 'air', filter: 'treble=g=2:f=10000:t=s', reason: 'voix radio : air et brillance (+2 dB au-dessus de 10 kHz)' });
+    steps.push({ id: 'compress', filter: 'acompressor=threshold=-24dB:ratio=3.5:attack=8:release=140:knee=6:makeup=3,acompressor=threshold=-12dB:ratio=2:attack=3:release=80:knee=3', reason: 'voix radio : compression en deux étages (niveau constant, voix posée et dense)' });
+  } else steps.push({ id: 'compress', filter: 'acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:knee=4', reason: 'compression douce : égalise le niveau entre passages forts et faibles' });
   void o.targetLufs;
   return steps;
 }

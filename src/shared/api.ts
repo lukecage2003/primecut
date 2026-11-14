@@ -46,8 +46,10 @@ export interface AppSettings {
   transcriber: TranscriberConfig;
   /** Folders of the user's own music library (analysed locally, never modified). */
   musicLibrary?: { dirs: string[] };
+  /** Optional local OCR with Tesseract installed by the user (off by default; nothing is downloaded). */
+  ocr?: import('../engine/ocr').OcrConfig;
   /** P-CORE appearance / reactions / placement (brand-wide). */
-  pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings>; /** Render quality of P-CORE clips in productions (default 'high'). */ quality?: import('../pcore/quality').PCoreQuality };
+  pcore?: { settings?: Partial<import('../pcore/expression').PCoreSettings>; placement?: Partial<import('../pcore/placement').PlacementSettings>; /** Render quality of P-CORE clips in productions (default 'high'). */ quality?: import('../pcore/quality').PCoreQuality; /** Engine for new clips (default 'v2'). */ engine?: 'v1' | 'v2'; /** P-CORE V2 identity, animation, narrative and preset. */ v2?: Partial<import('../pcore/v2/config').PCoreV2Settings> };
 }
 
 export interface ExportRequest {
@@ -73,6 +75,8 @@ export interface ProductionInputs {
   mediaFolders: string[];
   /** Frame format of the generated version; omitted = the project's own format. */
   format?: OutputFormat;
+  /** Proper names of this video, comma separated (guide the transcription and fix misspelt names). */
+  vocabulary?: string;
   /** Narration format: 'auto' (detected) or forced. */
   narrationKind?: import('../production/narrationFormat').NarrationKind | 'auto';
 }
@@ -112,10 +116,20 @@ export interface PrimestoneApi {
     set(patch: Partial<AppSettings>): Promise<AppSettings>;
   };
   pcore: {
-    analyze(r: PCoreStudioRequest): Promise<{ fps: number; voice: { env: number; low: number; mid: number; high: number; speaking: boolean }[]; states: string[]; energy: number[]; fragment: number[] }>;
+    analyze(r: PCoreStudioRequest): Promise<{ fps: number; voice: { env: number; low: number; mid: number; high: number; speaking: boolean }[]; states: string[]; energy: number[]; fragment: number[]; engine: 'v1' | 'v2'; cues?: import('../pcore/v2/director').PCoreCue[]; log?: string[]; expr?: string[] }>;
+    /** Measures of the last P-CORE render on this computer (null before the first one). */
+    stats(): Promise<import('../main/pcoreRender').PCoreRenderStats | null>;
+    /** Re-renders one P-CORE timeline asset after its cues changed. */
+    renderAsset(projectFile: string, asset: MediaAsset, narration: MediaAsset, settings: import('../core/model').SequenceSettings): Promise<{ path: string; fingerprint: import('../core/model').MediaFingerprint }>;
     preview(projectFile: string, r: PCoreStudioRequest & { size: number }): Promise<string>;
     exportFile(r: PCoreStudioRequest & { width: number; height: number; format: PCoreFormat; withAudio: boolean; quality?: import('../pcore/quality').PCoreQuality }): Promise<{ path: string; check: AlphaCheck; quality: import('../pcore/quality').PCoreQuality; renderSec: number; fps: number } | null>;
     onProgress(cb: (f: number) => void): () => void;
+  };
+  ocr: {
+    /** Read-only check: is Tesseract installed, which version and languages (never installs anything). */
+    check(cfg: import('../engine/ocr').OcrConfig): Promise<import('../engine/ocr').OcrCheck>;
+    /** Native picker for tesseract(.exe). */
+    pick(): Promise<string | null>;
   };
   transcriber: {
     /** Read-only check of the configured engine/model (never installs or downloads). */
@@ -181,8 +195,14 @@ export interface PrimestoneApi {
     /** Opens a script (.pdf/.txt/.md); production scripts are converted to Primestone Markdown. */
     readTextFile(): Promise<{ path: string; text: string; title?: string | null; meta?: Record<string, string>; repairs?: number; sections?: number } | null>;
     chooseFolders(): Promise<string[]>;
+    /** Transcribes a spoken edit instruction (recorded audio) with the local model. */
+    transcribeCommand(audio: Uint8Array): Promise<string>;
+    /** Measures the editing of a reference video on this computer and proposes matching preferences. */
+    inspire(prefs: ProductionPreferences): Promise<{ profile: import('../engine/styleReference').StyleProfile; prefs: ProductionPreferences; changes: string[] } | null>;
     /** Renders a procedural composition; returns the cached file and its fingerprint. */
     renderVisual(projectFile: string, spec: import('../core/generators').GeneratorSpec, size: { width: number; height: number; rate: string }, audioPath: string | null): Promise<{ path: string; fingerprint: import('../core/model').MediaFingerprint }>;
+    /** Imports a track of the music library into the project (the file is only read). */
+    musicTrack(projectFile: string, trackId: string): Promise<{ media: MediaAsset; lufs: number | null }>;
   };
   tasks: {
     list(): Promise<TaskInfo[]>;

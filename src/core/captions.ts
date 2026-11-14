@@ -60,13 +60,33 @@ export const CAPTION_FONT = 'Arial';
 export const CAPTION_METRICS: Record<CaptionStyle, { size: number; marginV: number }> = {
   subtitle: { size: 0.048, marginV: 0.07 },
   title: { size: 0.085, marginV: 0 },
-  'lower-third': { size: 0.045, marginV: 0.12 },
+  // name cards sit above two lines of subtitles (0.07 + 2 × 0.048 × 1.25 + gap), never on them
+  'lower-third': { size: 0.045, marginV: 0.2 },
   placeholder: { size: 0.04, marginV: 0 },
 };
 
+/**
+ * Reference size for caption text: the frame height in landscape and square formats; in portrait
+ * (9:16, 4:5) 1.2 × the width, so text keeps a readable size without overflowing the narrow frame.
+ */
+export function captionBase(W: number, H: number): number {
+  return H > W ? Math.min(H, W * 1.2) : H;
+}
+
+/**
+ * Characters per subtitle line that really fit the frame at the subtitle size (average glyph ≈ 0.55
+ * em, 88 % of the width usable), capped at 42 — so the line breaks decided by the edit are the ones
+ * shown, never re-wrapped into 3 or 4 lines by the renderer.
+ */
+export function subtitleChars(W: number, H: number): number {
+  const font = CAPTION_METRICS.subtitle.size * captionBase(W, H);
+  return Math.max(16, Math.min(42, Math.floor((W * 0.88) / (font * 0.55))));
+}
+
 export function captionsToAss(seq: Sequence, captions: Caption[] = seq.captions, offsetFrames = 0): string {
   const { width: W, height: H, frameRate: r } = seq.settings;
-  const px = (f: number) => Math.round(f * H);
+  const base = captionBase(W, H);
+  const px = (f: number) => Math.round(f * base);
   const style = (name: string, s: CaptionStyle, primary: string, outline: string, back: string, bold: number, align: number, borderStyle: number, marginL = 0.05) =>
     `Style: ${name},${CAPTION_FONT},${px(CAPTION_METRICS[s].size)},${primary},&H000000FF,${outline},${back},${bold},0,0,0,100,100,0,0,${borderStyle},${Math.max(1, Math.round(H / 360))},${Math.round(H / 540)},${align},${Math.round(W * marginL)},${Math.round(W * marginL)},${px(CAPTION_METRICS[s].marginV)},1`;
   const lines = [
@@ -120,3 +140,12 @@ export function captionsToSubtitleFile(seq: Sequence, format: 'srt' | 'vtt', sty
   return format === 'vtt' ? `WEBVTT\n\n${body}` : body;
 }
 
+
+/**
+ * Folder for the subtitle files of an export: never next to the video with the same name, because
+ * players load such files automatically on top of the burned-in subtitles (double subtitles).
+ */
+export function subtitleDir(videoPath: string): string {
+  const base = videoPath.replace(/\.[^.\\/]+$/, '');
+  return `${base} — sous-titres (pour YouTube, TikTok)`;
+}

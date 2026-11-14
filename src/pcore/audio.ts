@@ -157,3 +157,26 @@ export function silences(frames: VoiceFrame[], fps: number): { start: number; en
   if (s !== null) out.push({ start: s / fps, end: frames.length / fps });
   return out;
 }
+
+/**
+ * Voice spectrum per video frame: `bands` log-spaced band levels (0..1, each normalised over the whole
+ * clip in dB) from 2nd-order band filters between 120 Hz and ~45 % of the sample rate. Real measurements of
+ * the narration, used by the HUD spectrum ring.
+ */
+export function spectrumBands(samples: Float32Array, sampleRate: number, fps: number, bands = 24): Float32Array[] {
+  const frames = Math.ceil((samples.length / sampleRate) * fps);
+  const lo = 120;
+  const hi = Math.min(7000, sampleRate * 0.45);
+  const per: Float32Array[] = [];
+  for (let b = 0; b < bands; b++) {
+    const f0 = lo * Math.pow(hi / lo, (b + 0.5) / bands);
+    per.push(normaliseDb(frameRms(bandpass(samples, sampleRate, f0, 2.2), sampleRate, fps, frames)));
+  }
+  const out: Float32Array[] = [];
+  for (let f = 0; f < frames; f++) {
+    const v = new Float32Array(bands);
+    for (let b = 0; b < bands; b++) v[b] = per[b]![f]!;
+    out.push(v);
+  }
+  return out;
+}

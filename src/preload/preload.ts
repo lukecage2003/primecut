@@ -10,11 +10,17 @@ const api: PrimestoneApi = {
     analyze: (r) => invoke('pcore:analyze', r),
     preview: (file, r) => invoke('pcore:preview', file, r),
     exportFile: (r) => invoke('pcore:export', r),
+    stats: () => invoke('pcore:stats'),
+    renderAsset: (file, asset, narration, settings) => invoke('pcore:renderAsset', file, asset, narration, settings),
     onProgress: (cb) => {
       const l = (_e: unknown, f: number) => cb(f);
       ipcRenderer.on('pcore:progress', l);
       return () => ipcRenderer.removeListener('pcore:progress', l);
     },
+  },
+  ocr: {
+    check: (cfg) => invoke('ocr:check', cfg),
+    pick: () => invoke('ocr:pick'),
   },
   transcriber: {
     check: (cfg) => invoke('transcriber:check', cfg),
@@ -70,7 +76,10 @@ const api: PrimestoneApi = {
     revertPreferences: (v) => invoke('production:revertPreferences', v),
     readTextFile: () => invoke('production:readTextFile'),
     chooseFolders: () => invoke('production:chooseFolders'),
+    transcribeCommand: (audio) => invoke('production:transcribeCommand', audio),
+    inspire: (prefs) => invoke('production:inspire', prefs),
     renderVisual: (file, spec, size, audio) => invoke('production:renderVisual', file, spec, size, audio),
+    musicTrack: (file, trackId) => invoke('production:musicTrack', file, trackId),
   },
   tasks: {
     list: () => invoke('tasks:list'),

@@ -43,6 +43,7 @@ export function SettingsPanel() {
           vérifié sur cette machine. Primestone ne baisse jamais la qualité sans vous le dire.
         </div>
         <TranscriberSettings />
+        <OcrSettings />
         <div className="section-title">Matériel (inspection en lecture seule)</div>
         {!hw && !err && <div className="muted">Inspection…</div>}
         {err && <div style={{ color: 'var(--danger)' }}>{err}</div>}
@@ -85,6 +86,42 @@ export function SettingsPanel() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Local OCR (optional): Tesseract installed by the user reads the text of comic pages (balloons,
+ * captions) so matching can rely on what the page says, not only on its file name. Off by default;
+ * Primestone never installs Tesseract nor downloads its language data.
+ */
+function OcrSettings() {
+  const settings = useStore((s) => s.settings)!;
+  const cfg = settings.ocr ?? { enabled: false, languages: 'fra+eng' };
+  const [check, setCheck] = useState<Awaited<ReturnType<typeof api.ocr.check>> | null>(null);
+  const set = (patch: Partial<typeof cfg>) => void updateSettings({ ocr: { ...cfg, ...patch } });
+  return (
+    <div data-testid="ocr-settings">
+      <div className="section-title">OCR local (texte des bulles et des cases)</div>
+      <div className="tiny">
+        Facultatif. Utilise Tesseract (licence Apache-2.0) s’il est installé sur cet ordinateur ; rien n’est téléchargé ni envoyé. Le lettrage des comics (majuscules,
+        onomatopées) est souvent mal lu : la confiance est affichée et une lecture douteuse ne suffit jamais à choisir une image.
+      </div>
+      <label className="row" style={{ gap: 6 }}>
+        <input type="checkbox" checked={!!cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} data-testid="ocr-enabled" />
+        Lire le texte des images lors de l’indexation des médias
+      </label>
+      <div className="insp-row">
+        <label>Langues</label>
+        <input className="input" value={cfg.languages ?? 'fra+eng'} onChange={(e) => set({ languages: e.target.value })} aria-label="Langues Tesseract" />
+        <span />
+      </div>
+      <div className="row" style={{ gap: 6 }}>
+        <span className="tiny" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }} title={cfg.path}>{cfg.path || 'Recherche automatique (PATH, Program Files)'}</span>
+        <button className="btn ghost" onClick={async () => { const p = await api.ocr.pick(); if (p) set({ path: p }); }}>Choisir…</button>
+        <button className="btn" data-testid="ocr-check" onClick={async () => setCheck(await api.ocr.check(cfg))}>Vérifier</button>
+      </div>
+      {check && <div className="tiny" data-testid="ocr-status" style={{ color: check.ok ? 'var(--ok)' : 'var(--warn, #e0a800)' }}>{check.message}{check.languages.length ? ` · langues installées : ${check.languages.join(', ')}` : ''}</div>}
     </div>
   );
 }

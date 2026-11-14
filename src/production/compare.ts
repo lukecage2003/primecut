@@ -20,6 +20,10 @@ export interface VersionMetrics {
   maxShotSec: number;
   specificShare: number;
   generatedShare: number;
+  /** Share of shots whose match relies on file names, tags or folders only (content not analysed). */
+  metadataOnlyShare: number;
+  /** Decisions accepted, locked or chosen by the user. */
+  validatedDecisions: number;
   repeatsBackToBack: number;
   transitions: number;
   subtitles: number;
@@ -57,6 +61,8 @@ export function versionMetrics(seq: Sequence, media: Record<string, MediaAsset>)
     maxShotSec: lens.length ? round(lens.at(-1)!) : 0,
     specificShare: shots.length ? round(shots.filter((s) => s.quality === 'strong').length / shots.length) : 0,
     generatedShare: shots.length ? round(shots.filter((s) => s.quality === 'generated').length / shots.length) : 0,
+    metadataOnlyShare: shots.length ? round(shots.filter((s) => s.metadataOnly).length / shots.length) : 0,
+    validatedDecisions: p?.edg?.decisions.filter((d) => d.state === 'acceptée' || d.state === 'verrouillée').length ?? 0,
     repeatsBackToBack: repeats,
     transitions: seq.tracks.reduce((a, t) => a + (t.transitions?.length ?? 0), 0),
     subtitles: subs.length,
@@ -88,7 +94,9 @@ const ROWS: { key: keyof VersionMetrics; label: string; better?: 'lower' | 'high
   { key: 'meanShotSec', label: 'Durée moyenne d’un plan', unit: ' s' },
   { key: 'medianShotSec', label: 'Durée médiane d’un plan', unit: ' s' },
   { key: 'maxShotSec', label: 'Plan le plus long', unit: ' s' },
-  { key: 'specificShare', label: 'Plans avec image pertinente', better: 'higher' },
+  { key: 'specificShare', label: 'Plans avec correspondance précise (nom, étiquette, description — contenu non analysé)' },
+  { key: 'metadataOnlyShare', label: 'Plans choisis sur les seuls noms de fichiers' },
+  { key: 'validatedDecisions', label: 'Décisions validées ou verrouillées par vous' },
   { key: 'generatedShare', label: 'Plans animés (sans image)' },
   { key: 'repeatsBackToBack', label: 'Même image deux fois de suite', better: 'lower' },
   { key: 'transitions', label: 'Transitions' },

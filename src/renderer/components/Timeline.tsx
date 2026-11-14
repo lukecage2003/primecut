@@ -24,6 +24,7 @@ import { addDefaultTransition, addToTimeline, clearPreview, edit, previewEdit, s
 import { pause } from '../playback';
 import { type Tool, currentProject, currentSequence, store, useEditor } from '../store';
 import { MEDIA_MIME } from './MediaLibrary';
+import { EXPRESSION_LIST } from '../../pcore/v2/expressions';
 import { PEAKS_PER_SECOND } from '../peaks';
 
 const VH = 64;
@@ -332,12 +333,52 @@ function TrackRow({ track, seq, zoom, frameAt }: { track: Track; seq: Sequence; 
   );
 }
 
+/** P-CORE V2 reactions drawn on their clip (expression at its time; locked ones marked). */
+function PCoreTicks({ clip, pc, zoom }: { clip: Clip; pc: NonNullable<import('../../core').MediaAsset['pcore']>; zoom: number }) {
+  const fps = useEditor((e) => currentSequence(e).settings.frameRate);
+  const f = fps.num / fps.den;
+  const t0 = pc.offsetSec;
+  return (
+    <>
+      {(pc.cues ?? [])
+        .filter((c) => c.state !== 'désactivée' && !['dormant', 'silence'].includes(c.expression) && c.start + c.duration > t0 && c.start < t0 + pc.durationSec)
+        .map((c) => {
+          const x = Math.max(0, (c.start - t0) * f) * zoom;
+          const w = Math.max(3, c.duration * f * zoom);
+          return (
+            <span key={c.id} className={`pcore-tick ${c.state === 'verrouillée' ? 'locked' : ''}`} style={{ left: x, width: w }} title={`${EXPRESSIONS_LABEL[c.expression] ?? c.expression} · ${c.state} · ${c.reasons[0] ?? ''}`} data-testid="pcore-tick" />
+          );
+        })}
+    </>
+  );
+}
+const EXPRESSIONS_LABEL: Record<string, string> = Object.fromEntries(EXPRESSION_LIST.map((x) => [x.id, x.label]));
+
+/** Decision badge per clip (cached per graph object: one pass per change of the graph). */
+const badgeCache = new WeakMap<object, Map<string, string>>();
+function decisionBadge(seq: ReturnType<typeof currentSequence>, clipId: string): string {
+  const g = seq.production?.edg;
+  if (!g) return '';
+  let m = badgeCache.get(g);
+  if (!m) {
+    m = new Map();
+    for (const d of g.decisions) {
+      const low = d.state === 'proposée' && d.kind === 'visuel' && !!d.chosen.mediaId && !d.chosen.generated && d.confidence < 0.45;
+      for (const id of d.clipIds) m.set(id, d.state === 'verrouillée' ? 'locked' : d.state === 'acceptée' ? 'accepted' : d.state === 'rejetée' ? 'rejected' : low ? 'low' : '');
+    }
+    badgeCache.set(g, m);
+  }
+  return m.get(clipId) ?? '';
+}
+const BADGE_TITLE: Record<string, string> = { locked: 'Décision verrouillée', accepted: 'Décision acceptée', rejected: 'Décision rejetée : à remplacer', low: 'Correspondance faible : à vérifier' };
+
 const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: Clip; track: Track; zoom: number; frameAt: (x: number) => number }) {
   const media = useEditor((e) => currentProject(e).media[clip.mediaId]);
   const selected = useEditor((e) => e.selection.includes(clip.id));
   const thumb = useEditor((e) => e.thumbs[clip.mediaId]);
   const peaks = useEditor((e) => e.peaks[clip.mediaId]);
   const status = useEditor((e) => e.mediaStatus[clip.mediaId]);
+  const badge = useEditor((e) => decisionBadge(currentSequence(e), clip.id));
   const drag = useRef<Drag | null>(null);
   const offline = status === 'missing' || status === 'changed';
   const w = Math.max(2, clip.duration * zoom);
@@ -455,7 +496,8 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
 
   return (
     <div
-      className={`clip ${kindClass} ${selected ? 'selected' : ''} ${clip.enabled ? '' : 'disabled'} ${offline ? 'offline' : ''}`}
+      className={`clip ${kindClass} ${selected ? 'selected' : ''} ${clip.enabled ? '' : 'disabled'} ${offline ? 'offline' : ''} ${badge ? `dec-${badge}` : ''}`}
+      data-decision-state={badge || undefined}
       style={{ left: clip.start * zoom, width: w }}
       data-testid="clip"
       data-clip={clip.id}
@@ -470,12 +512,14 @@ const ClipView = memo(function ClipView({ clip, track, zoom, frameAt }: { clip: 
       {track.kind === 'video' && thumb && <div className="strip" style={{ backgroundImage: `url("pmedia://local/${encodeURIComponent(thumb)}")` }} />}
       {track.kind === 'audio' && peaks && <Wave peaks={peaks} clip={clip} width={w} height={AH - 22} fps={0} />}
       <div className="label">
+        {badge && <span className="dec-badge" title={BADGE_TITLE[badge]} aria-label={BADGE_TITLE[badge]}>{badge === 'locked' ? '🔒' : badge === 'accepted' ? '✓' : badge === 'rejected' ? '✕' : '?'}</span>}
         {offline ? '⚠ ' : ''}
         {clip.name}
       </div>
       {clip.fadeIn > 0 && <div className="fade in" style={{ width: clip.fadeIn * zoom }} />}
       {clip.fadeOut > 0 && <div className="fade out" style={{ width: clip.fadeOut * zoom }} />}
       {clip.linkId && <span className="link">🔗</span>}
+      {media?.pcore?.cues && <PCoreTicks clip={clip} pc={media.pcore} zoom={zoom} />}
       {w > 18 && (
         <>
           <div className="edge in" data-testid="edge-in" onPointerDown={(e) => begin(e, 'trim-in')} onPointerMove={onMove} onPointerUp={onUp} />

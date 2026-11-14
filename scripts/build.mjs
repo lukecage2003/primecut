@@ -6,7 +6,7 @@ import fs from 'node:fs';
 const dev = process.argv.includes('--dev');
 fs.rmSync('dist', { recursive: true, force: true });
 
-const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node20', external: ['electron'], sourcemap: dev ? 'inline' : false, logLevel: 'warning' };
+const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node20', external: ['electron', '@napi-rs/canvas', 'pdfjs-dist'], sourcemap: dev ? 'inline' : false, logLevel: 'warning' };
 await esbuild({ ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main/main.js' });
 await esbuild({ ...common, entryPoints: ['src/preload/preload.ts'], outfile: 'dist/preload/preload.js' });
 await esbuild({ ...common, entryPoints: ['src/preload/pcorePreload.ts'], outfile: 'dist/preload/pcore.js' });

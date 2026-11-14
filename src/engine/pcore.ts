@@ -4,9 +4,13 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { analyzeVoice, type AudioEngineOptions } from '../pcore/audio';
+import { analyzeVoice, spectrumBands, type AudioEngineOptions } from '../pcore/audio';
 import { type PCoreEvent, type PCoreFrame, type PCoreSettings, expressionTrack } from '../pcore/expression';
 import { ffmpeg, ffprobe } from './ffmpeg';
+import { animateV2, type PCoreFrameV2 } from '../pcore/v2/animation';
+import type { PCoreV2Settings } from '../pcore/v2/config';
+import { type DirectorResult, type CueEdit, type PCoreCue, directPCore } from '../pcore/v2/director';
+import type { NarrativeSentence } from '../pcore/v2/narrative';
 
 export type PCoreFormat = 'webm-vp9' | 'mov-prores4444' | 'mov-qtrle' | 'png-sequence';
 
@@ -129,4 +133,32 @@ export async function validateAlpha(file: string, expect: { frames: number; widt
   if (alphaMin > 5) problems.push(`no transparent pixels (alpha min ${alphaMin})`);
   if (alphaMax < 200) problems.push(`no opaque pixels (alpha max ${alphaMax})`);
   return { ok: problems.length === 0, pixFmt, frames, durationSec, width, height, alphaMin, alphaMax, problems };
+}
+
+/**
+ * P-CORE V2 frames for a clip window: voice features of the window (with a warm-up so the springs
+ * start in the right state), then the animation engine with the director's cues (absolute times).
+ */
+export async function pcoreFramesV2(audioPath: string | null, o: { offsetSec: number; durationSec: number; fps: number; cues: PCoreCue[]; v2: PCoreV2Settings; seed?: number; signal?: AbortSignal; chapters?: { time: number; title: string }[] }): Promise<PCoreFrameV2[]> {
+  const frames = Math.round(o.durationSec * o.fps);
+  const pre = Math.min(o.offsetSec, 6);
+  const pcm = audioPath ? await decodePcm(audioPath, o.offsetSec - pre, o.durationSec + pre, 16000, o.signal) : new Float32Array(Math.round((o.durationSec + pre) * 16000));
+  const voice = analyzeVoice(pcm, 16000, { fps: o.fps });
+  const skip = Math.round(pre * o.fps);
+  // the HUD shows the real spectrum of the voice (only computed when the layer is on)
+  const spectrum = o.v2.identity.layers.hud?.enabled ? spectrumBands(pcm, 16000, o.fps, 24) : undefined;
+  return animateV2(voice, o.fps, o.cues, o.v2, o.seed ?? 7, o.offsetSec - pre, spectrum, o.chapters).slice(skip, skip + frames);
+}
+
+/**
+ * Plans the P-CORE V2 cues for a whole narration (director). The voice is analysed at a coarse
+ * rate (4 kHz, 10 frames/s): enough for pauses, energy and rhythm, light for long narrations.
+ */
+export async function planPCoreV2(audioPath: string, o: { sentences?: NarrativeSentence[]; v2: PCoreV2Settings; edits?: CueEdit[]; added?: PCoreCue[]; endSec?: number; signal?: AbortSignal }): Promise<DirectorResult> {
+  const { stdout } = await ffmpeg(['-v', 'error', '-i', audioPath, ...(o.endSec ? ['-t', o.endSec.toFixed(3)] : []), '-vn', '-ac', '1', '-ar', '4000', '-f', 'f32le', 'pipe:1'], { collectStdout: true, signal: o.signal });
+  const n = Math.floor(stdout.byteLength / 4);
+  const pcm = new Float32Array(n);
+  pcm.set(new Float32Array(stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + n * 4)));
+  const voice = analyzeVoice(pcm, 4000, { fps: 10 });
+  return directPCore({ voice, fps: 10, sentences: o.sentences, settings: o.v2, edits: o.edits, added: o.added });
 }

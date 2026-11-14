@@ -16,6 +16,12 @@ import {
   addTransitionsAt,
   removeTransition,
   VISUAL_KINDS,
+  reconcileGraph,
+  setDecisionState,
+  rejectDecision,
+  chooseCandidate,
+  replaceMusic,
+  type DecisionState,
 } from '../core';
 import type { OpenResult } from '../shared/api';
 import { api } from './api';
@@ -287,6 +293,8 @@ export function edit<R>(label: string, fn: (seq: Draft<Sequence>, media: MediaMa
       const seq = d.sequences[d.activeSequenceId]!;
       const r = fn(seq, d.media as MediaMap, d);
       normalizeSequence(seq, d.media as MediaMap);
+      // manual edits flow back into the decision graph in the same undoable step
+      reconcileGraph(seq as Sequence, d.media as MediaMap);
       return r;
     });
   } catch (err) {
@@ -504,4 +512,176 @@ export async function updateVisual(mediaId: string, patch: Partial<import('../co
   } catch (err) {
     toast(`Échec du rendu : ${errorText(err)}`, 'error');
   }
+}
+
+// ---------------------------------------------------------------- edit decisions (EDG)
+
+const STATE_LABEL: Record<DecisionState, string> = { proposée: 'Remettre en proposition', acceptée: 'Accepter la décision', rejetée: 'Rejeter la décision', verrouillée: 'Verrouiller la décision' };
+
+/** Accept, lock or unlock a decision (one undoable step). Rejection goes through rejectEditDecision. */
+export function setEditDecision(id: string, state: Exclude<DecisionState, 'rejetée'>) {
+  edit(STATE_LABEL[state], (s) => void setDecisionState(s as Sequence, id, state));
+}
+
+/** Rejects the current choice; the next proposal (if any) replaces it at once. */
+export function rejectEditDecision(id: string) {
+  const d = edit('Rejeter la décision', (s, m) => rejectDecision(s as Sequence, m, id));
+  if (d) toast(d.state === 'rejetée' ? 'Choix rejeté : aucune autre proposition, choisissez un média (ou régénérez)' : `Choix rejeté, remplacé par : ${d.chosen.label}`, 'info');
+}
+
+/** Puts a candidate (or any picture of the project) in place of the decision's choice; locks it. */
+export function chooseForDecision(id: string, mediaId: string) {
+  edit('Remplacer l’image', (s, m) => void chooseCandidate(s as Sequence, m, id, mediaId));
+}
+
+/** Replaces the music of a section by a track of the music library (imported, then laid in place). */
+export async function chooseMusicForDecision(id: string, trackId: string) {
+  const e = ed();
+  try {
+    const r = await api.production.musicTrack(e.file, trackId);
+    const seq = currentSequence(e);
+    const prefs = (await api.production.preferences()).current;
+    const duck = Math.min(0, prefs.duckDepthDb ?? 0);
+    const level = prefs.narrationLufs + prefs.musicRelativeDb - duck;
+    const gain = r.lufs != null ? Math.max(-40, Math.min(12, level - r.lufs)) : prefs.musicRelativeDb - duck;
+    void seq;
+    ed().history.commit('Remplacer la musique', (d) => {
+      d.media[r.media.id] = r.media as Draft<MediaAsset>;
+      const s = d.sequences[d.activeSequenceId]!;
+      replaceMusic(s as Sequence, id, r.media, gain, trackId);
+      normalizeSequence(s, d.media as MediaMap);
+    });
+    store.setEditor((x) => ({ mediaStatus: { ...x.mediaStatus, [r.media.id]: 'online' as const } }));
+    void prepareMedia(r.media);
+  } catch (err) {
+    toast(`Musique non remplacée : ${errorText(err)}`, 'error');
+  }
+}
+
+// ---------------------------------------------------------------- P-CORE V2 cues (direction of the version)
+
+import type { CueEdit, PCoreCue } from '../pcore/v2/director';
+import type { ExpressionId } from '../pcore/v2/expressions';
+
+/** Media ids of the version's P-CORE V2 clips whose window overlaps [t0, t1] (narration seconds). */
+function pcoreAssetsAround(p: Project, seq: Sequence, t0: number, t1: number): string[] {
+  const used = new Set(seq.tracks.flatMap((t) => t.clips.map((c) => c.mediaId)));
+  return Object.values(p.media)
+    .filter((m) => used.has(m.id) && m.pcore?.engine === 'v2' && m.pcore.offsetSec < t1 + 1 && m.pcore.offsetSec + m.pcore.durationSec > t0 - 6)
+    .map((m) => m.id);
+}
+
+/**
+ * Changes the P-CORE direction of the active version (one undoable step), then re-renders only the
+ * P-CORE clips around the change. `edit` null restores the automatic proposal.
+ */
+export async function editPCoreCues(label: string, change: (cues: PCoreCue[], edits: CueEdit[], added: PCoreCue[]) => { t0: number; t1: number } | null) {
+  const e = ed();
+  let touched: string[] = [];
+  e.history.commit(label, (d) => {
+    const seq = d.sequences[d.activeSequenceId]!;
+    const pc = seq.production?.pcore;
+    if (!pc) throw new EditError('Cette version n’a pas de direction P-CORE V2 (régénérez-la avec P-CORE V2)');
+    const span = change(pc.cues as PCoreCue[], pc.edits as CueEdit[], pc.added as PCoreCue[]);
+    if (!span) return;
+    pc.cues.sort((a, b) => a.start - b.start);
+    touched = pcoreAssetsAround(d as Project, seq as Sequence, span.t0, span.t1);
+    for (const id of touched) {
+      const a = d.media[id]!.pcore!;
+      a.cues = (pc.cues as PCoreCue[]).filter((c) => c.start < a.offsetSec + a.durationSec + 1 && c.start + c.duration > a.offsetSec - 6) as Draft<PCoreCue>[];
+    }
+  });
+  if (!touched.length) return;
+  const cur = ed();
+  const seq = currentSequence(cur);
+  const narr = cur.history.present.media[seq.production!.narrationMediaId] ?? Object.values(cur.history.present.media).find((m) => m.id === cur.history.present.media[touched[0]!]?.pcore?.audioMediaId);
+  if (!narr) return toast('Narration introuvable : rendu P-CORE impossible', 'error');
+  toast(`Nouveau rendu de ${touched.length} clip(s) P-CORE…`, 'info');
+  try {
+    const results = await Promise.all(touched.map((id) => api.pcore.renderAsset(cur.file, ed().history.present.media[id]!, narr, seq.settings).then((r) => [id, r] as const)));
+    ed().history.commit('Rendu de P-CORE', (d) => {
+      for (const [id, r] of results) {
+        const a = d.media[id];
+        if (!a) continue;
+        a.path = r.path;
+        a.fingerprint = r.fingerprint;
+      }
+    });
+    store.setEditor((x) => ({ thumbs: Object.fromEntries(Object.entries(x.thumbs).filter(([k]) => !touched.includes(k))) }));
+    for (const id of touched) void prepareMedia(ed().history.present.media[id]!);
+  } catch (err) {
+    toast(`Rendu P-CORE impossible : ${errorText(err)}`, 'error');
+  }
+}
+
+const upsertEdit = (edits: CueEdit[], cue: PCoreCue, patch: Omit<CueEdit, 'id' | 'original'>) => {
+  const i = edits.findIndex((x) => x.id === cue.id);
+  if (i < 0) edits.push({ id: cue.id, original: { ...cue }, ...patch });
+  else Object.assign(edits[i]!, patch);
+};
+
+/** Accept, lock, disable or modify one P-CORE reaction. */
+export function setPCoreCue(id: string, patch: { expression?: ExpressionId; duration?: number; intensity?: number; start?: number; state?: PCoreCue['state'] }, label = 'Modifier la réaction P-CORE') {
+  return editPCoreCues(label, (cues, edits, added) => {
+    const c = cues.find((x) => x.id === id);
+    if (!c) return null;
+    const before = { t0: c.start, t1: c.start + c.duration };
+    Object.assign(c, patch, patch.expression ? { variant: 0 } : {});
+    if (patch.expression || patch.duration !== undefined || patch.intensity !== undefined || patch.start !== undefined) c.source = 'utilisateur';
+    if (!patch.state && c.state === 'proposée') c.state = 'acceptée';
+    const userAdded = added.find((x) => x.id === id);
+    if (userAdded) Object.assign(userAdded, c);
+    else upsertEdit(edits, c, { ...patch, state: c.state });
+    return { t0: Math.min(before.t0, c.start), t1: Math.max(before.t1, c.start + c.duration) };
+  });
+}
+
+/** Restores the automatic proposal of a reaction (removes the edit). */
+export function resetPCoreCue(id: string) {
+  return editPCoreCues('Rétablir la proposition P-CORE', (cues, edits, added) => {
+    const i = edits.findIndex((x) => x.id === id);
+    const j = cues.findIndex((x) => x.id === id);
+    if (added.some((x) => x.id === id)) {
+      // a reaction you added: removing it is the way back
+      added.splice(added.findIndex((x) => x.id === id), 1);
+      const c = cues.splice(j, 1)[0];
+      return c ? { t0: c.start, t1: c.start + c.duration } : null;
+    }
+    if (i < 0 || j < 0) return null;
+    const orig = edits[i]!.original;
+    const cur = cues[j]!;
+    const span = { t0: Math.min(cur.start, orig?.start ?? cur.start), t1: Math.max(cur.start + cur.duration, (orig?.start ?? 0) + (orig?.duration ?? 0)) };
+    if (orig) cues[j] = { ...orig };
+    edits.splice(i, 1);
+    return span;
+  });
+}
+
+/** Adds a reaction of your choice at the playhead. */
+export function addPCoreCue(expression: ExpressionId, duration: number) {
+  const e = ed();
+  const seq = currentSequence(e);
+  const t = (e.playhead * seq.settings.frameRate.den) / seq.settings.frameRate.num;
+  return editPCoreCues('Ajouter une réaction P-CORE', (cues, _edits, added) => {
+    const c: PCoreCue = { id: `pc-u-${Date.now().toString(36)}`, expression, start: +t.toFixed(2), duration, intensity: 1, variant: 0, reasons: ['ajoutée par vous'], source: 'utilisateur', state: 'verrouillée' };
+    cues.push(c);
+    added.push({ ...c });
+    return { t0: c.start, t1: c.start + c.duration };
+  });
+}
+
+/** Disables every automatic reaction (the base states stay) — reversible one by one or by undo. */
+export function disableAutoPCoreCues() {
+  return editPCoreCues('Désactiver les réactions automatiques', (cues, edits) => {
+    let t0 = Infinity;
+    let t1 = -Infinity;
+    for (const c of cues) {
+      if (c.source !== 'auto' || c.state !== 'proposée' || ['dormant', 'awakening', 'final-stabilization', 'silence', 'active'].includes(c.expression)) continue;
+      c.state = 'désactivée';
+      upsertEdit(edits, c, { state: 'désactivée' });
+      t0 = Math.min(t0, c.start);
+      t1 = Math.max(t1, c.start + c.duration);
+    }
+    return t0 < t1 ? { t0, t1 } : null;
+  });
 }

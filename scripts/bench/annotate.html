@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Annotation Primestone</title>
+<!-- Outil d'annotation hors ligne : ouvrez ce fichier dans un navigateur. Aucune donnée n'est envoyée ;
+     les images sont lues localement et le résultat est enregistré dans un fichier JSON que vous gardez. -->
+<style>
+  :root { --bg: #15161a; --fg: #ececf1; --muted: #9a9cab; --accent: #d9a441; --line: #2c2e37; --ok: #35d07f; --danger: #ff5a52; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0 12px 0 0; }
+  main { display: grid; grid-template-columns: 1fr 360px; gap: 0; height: calc(100vh - 54px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  #stage { position: relative; overflow: auto; padding: 16px; }
+  #wrap { position: relative; display: inline-block; user-select: none; }
+  #wrap img { display: block; max-width: 100%; max-height: calc(100vh - 100px); }
+  .box { position: absolute; border: 2px solid var(--accent); }
+  .box.text { border-color: #4cc3ff; border-style: dashed; background: rgba(76,195,255,.1); }
+  .box b { position: absolute; left: 0; top: 0; background: var(--accent); color: #000; font-size: 11px; padding: 0 4px; }
+  aside { border-left: 1px solid var(--line); padding: 12px 16px; overflow: auto; }
+  button, select, input, textarea { font: inherit; color: var(--fg); background: #22242c; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  textarea, input[type=text] { width: 100%; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  ol { padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; }
+  .tabs button[aria-selected=true] { border-color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Annotation du benchmark</h1>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="pages">B1 · Pages</button>
+    <button role="tab" aria-selected="false" data-tab="shots">B4 · Plans d'une version</button>
+  </div>
+  <span class="muted">Tout reste sur cet ordinateur.</span>
+</header>
+
+<section id="tab-pages">
+  <main>
+    <div id="stage"><div id="wrap"><img id="img" alt="" /></div><p class="muted" id="hint">Choisissez le dossier de pages.</p></div>
+    <aside>
+      <div class="row"><label>Annotateur <input id="annotator" type="text" placeholder="votre nom ou initiales" /></label></div>
+      <div class="row"><input type="file" id="folder" webkitdirectory multiple accept="image/*" aria-label="Dossier de pages" /></div>
+      <div class="row"><input type="file" id="load" accept=".json" aria-label="Reprendre un fichier d'annotation" /><span class="muted">reprendre un pages.json</span></div>
+      <div class="row"><button id="prev">◀</button><span id="pos">0/0</span><button id="next">▶</button></div>
+      <div class="row">
+        <label><input type="radio" name="mode" value="panel" checked /> Case</label>
+        <label><input type="radio" name="mode" value="text" /> Bulle ou texte</label>
+      </div>
+      <p class="muted">Tracez les cases <b>dans l'ordre de lecture</b> (glisser). Pour un texte, tapez ensuite ce qui est écrit. Clic droit sur un cadre : le supprimer.</p>
+      <div class="row"><label>Format <select id="format"><option value="">—</option><option>planche</option><option>double-page</option><option>couverture</option><option>webtoon</option><option>manga</option><option>illustration</option></select></label></div>
+      <label>Personnages présents (séparés par des virgules)<input id="characters" type="text" /></label>
+      <label>Description (ce que montre la page)<textarea id="description" rows="3"></textarea></label>
+      <h3>Cases</h3><ol id="panels"></ol>
+      <h3>Textes</h3><ol id="texts"></ol>
+      <div class="row"><button class="primary" id="save">Enregistrer pages.json</button></div>
+    </aside>
+  </main>
+</section>
+
+<section id="tab-shots" hidden>
+  <div style="padding: 16px">
+    <p>1. Créez le modèle : <code>npm run bench -- template MonProjet.psproj &gt; judgements.json</code><br />2. Chargez-le ici avec le dossier des images, notez chaque plan de 1 (sans rapport) à 5 (illustre exactement ce qui est dit).</p>
+    <div class="row"><input type="file" id="jfile" accept=".json" aria-label="Fichier judgements.json" /><input type="file" id="jimages" webkitdirectory multiple aria-label="Dossier des images" /></div>
+    <div class="row"><label>Annotateur <input id="jannotator" type="text" /></label>
+      <label>Jugement global <select id="overall"><option value="">—</option><option>publiable</option><option>retouches mineures</option><option>retouches majeures</option></select></label>
+      <label>Minutes de retouche <input id="minutes" type="number" min="0" style="width: 80px" /></label>
+      <button class="primary" id="jsave">Enregistrer judgements.json</button></div>
+    <table id="jtable" aria-label="Plans à noter"></table>
+  </div>
+</section>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+for (const b of document.querySelectorAll('[data-tab]')) b.onclick = () => {
+  for (const x of document.querySelectorAll('[data-tab]')) x.setAttribute('aria-selected', String(x === b));
+  $('tab-pages').hidden = b.dataset.tab !== 'pages';
+  $('tab-shots').hidden = b.dataset.tab !== 'shots';
+};
+const download = (name, obj) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+  a.download = name;
+  a.click();
+};
+const r4 = (v) => Math.round(v * 10000) / 10000;
+
+// ---------------- B1 pages
+let files = [];
+let i = 0;
+const ann = new Map(); // file name -> annotation
+const cur = () => files[i] && (ann.get(files[i].name) ?? ann.set(files[i].name, { file: files[i].name, panels: [], texts: [] }).get(files[i].name));
+$('folder').onchange = (e) => {
+  files = [...e.target.files].filter((f) => /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  i = 0;
+  show();
+};
+$('load').onchange = async (e) => {
+  const j = JSON.parse(await e.target.files[0].text());
+  if (j.format !== 'primestone-bench/pages@1') return alert('Fichier non reconnu');
+  $('annotator').value = j.annotator || '';
+  for (const p of j.pages) ann.set(p.file, { texts: [], ...p });
+  show();
+};
+$('prev').onclick = () => { if (i > 0) { keepFields(); i--; show(); } };
+$('next').onclick = () => { if (i + 1 < files.length) { keepFields(); i++; show(); } };
+function keepFields() {
+  const a = cur(); if (!a) return;
+  a.format = $('format').value || undefined;
+  a.characters = $('characters').value.split(',').map((s) => s.trim()).filter(Boolean);
+  a.description = $('description').value.trim() || undefined;
+}
+function show() {
+  const f = files[i];
+  $('pos').textContent = `${files.length ? i + 1 : 0}/${files.length}`;
+  if (!f) return;
+  $('hint').textContent = f.name;
+  $('img').src = URL.createObjectURL(f);
+  $('img').alt = `Page ${f.name}`;
+  const a = cur();
+  $('format').value = a.format || '';
+  $('characters').value = (a.characters || []).join(', ');
+  $('description').value = a.description || '';
+  draw();
+}
+function draw() {
+  const a = cur(); if (!a) return;
+  for (const el of [...$('wrap').querySelectorAll('.box')]) el.remove();
+  const add = (r, cls, label, onDel) => {
+    const el = document.createElement('div');
+    el.className = `box ${cls}`;
+    Object.assign(el.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
+    if (label) { const b = document.createElement('b'); b.textContent = label; el.appendChild(b); }
+    el.oncontextmenu = (e) => { e.preventDefault(); onDel(); draw(); };
+    $('wrap').appendChild(el);
+  };
+  a.panels.forEach((p, k) => add(p, '', String(k + 1), () => a.panels.splice(k, 1)));
+  a.texts.forEach((t, k) => add(t.box, 'text', '', () => a.texts.splice(k, 1)));
+  $('panels').innerHTML = '';
+  a.panels.forEach((p, k) => { const li = document.createElement('li'); li.textContent = `${Math.round(p.w * 100)} × ${Math.round(p.h * 100)} %`; $('panels').appendChild(li); });
+  $('texts').innerHTML = '';
+  a.texts.forEach((t) => { const li = document.createElement('li'); li.textContent = `${t.kind || 'texte'} : ${t.text}`; $('texts').appendChild(li); });
+}
+let start = null;
+const rel = (e) => { const r = $('img').getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+$('wrap').onpointerdown = (e) => { if (e.button === 0 && files[i]) start = rel(e); };
+window.onpointerup = (e) => {
+  if (!start) return;
+  const end = rel(e);
+  const box = { x: r4(Math.min(start.x, end.x)), y: r4(Math.min(start.y, end.y)), w: r4(Math.abs(end.x - start.x)), h: r4(Math.abs(end.y - start.y)) };
+  start = null;
+  if (box.w < 0.01 || box.h < 0.01) return;
+  const a = cur();
+  if (document.querySelector('input[name=mode]:checked').value === 'panel') a.panels.push(box);
+  else {
+    const text = prompt('Texte écrit dans cette zone (tel quel) :') ?? '';
+    const kind = prompt('Type : dialogue, narration, bruitage ou pensée', 'dialogue') || undefined;
+    a.texts.push({ box, text, kind });
+  }
+  draw();
+};
+$('save').onclick = () => {
+  keepFields();
+  const pages = files.map((f) => ann.get(f.name)).filter((a) => a && a.panels.length);
+  for (const [k, a] of ann) if (!files.some((f) => f.name === k) && a.panels.length) pages.push(a);
+  download('pages.json', { format: 'primestone-bench/pages@1', annotator: $('annotator').value.trim(), pages });
+};
+
+// ---------------- B4 shots
+let J = null;
+let imgs = new Map();
+$('jfile').onchange = async (e) => {
+  J = JSON.parse(await e.target.files[0].text());
+  if (J.format !== 'primestone-bench/judgements@1') { J = null; return alert('Fichier non reconnu'); }
+  $('jannotator').value = J.annotator || '';
+  $('overall').value = J.overall || '';
+  $('minutes').value = J.retouchMinutes ?? '';
+  table();
+};
+$('jimages').onchange = (e) => { imgs = new Map([...e.target.files].map((f) => [f.name, f])); table(); };
+function table() {
+  if (!J) return;
+  const t = $('jtable');
+  t.innerHTML = '<tr><td>Temps</td><td>Passage</td><td>Image</td><td>Note</td><td>Trompeuse</td></tr>';
+  J.shots.forEach((s) => {
+    const tr = document.createElement('tr');
+    const base = s.media ? s.media.split(/[\\/]/).pop() : null;
+    const f = base && imgs.get(base);
+    tr.innerHTML = `<td>${s.start.toFixed(1)} s</td><td></td><td></td><td></td><td></td>`;
+    tr.children[1].textContent = s.text;
+    if (f) { const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.style.maxWidth = '220px'; im.alt = base; tr.children[2].appendChild(im); }
+    else tr.children[2].textContent = s.media ? base : 'composition / visuel manquant';
+    const sel = document.createElement('select');
+    sel.setAttribute('aria-label', `Note du plan à ${s.start.toFixed(1)} s`);
+    sel.innerHTML = '<option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>';
+    sel.value = s.rating ? String(s.rating) : '';
+    sel.onchange = () => { s.rating = sel.value ? Number(sel.value) : undefined; };
+    tr.children[3].appendChild(sel);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !!s.misleading; cb.setAttribute('aria-label', 'Image trompeuse');
+    cb.onchange = () => { s.misleading = cb.checked || undefined; };
+    tr.children[4].appendChild(cb);
+    t.appendChild(tr);
+  });
+}
+$('jsave').onclick = () => {
+  if (!J) return;
+  J.annotator = $('jannotator').value.trim();
+  J.overall = $('overall').value || undefined;
+  J.retouchMinutes = $('minutes').value === '' ? undefined : Number($('minutes').value);
+  download('judgements.json', J);
+};
+</script>
+</body>
+</html>

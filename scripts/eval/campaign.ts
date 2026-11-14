@@ -10,6 +10,11 @@
  * Transcription: used when PRIMESTONE_FW_PYTHON and PRIMESTONE_FW_MODEL point to faster-whisper.
  * Metrics: timings, sync error vs truth, QC, shot relevance proxy, repetition, black frames,
  * loudness/true peak, export verification, peak memory.
+ *
+ * WARNING (audit of 13/11/2026): with `--media rich|sparse` the library is made of synthetic pictures
+ * NAMED FROM THE SCRIPT, so the "shot relevance proxy" is circular (it measures name matching against
+ * names derived from the same text). It must not be read as visual relevance. The real protocol is
+ * scripts/bench (human annotations on real pages and real productions): see docs/BENCHMARK.md.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

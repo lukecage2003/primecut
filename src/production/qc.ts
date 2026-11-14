@@ -2,7 +2,7 @@
  * Automatic quality control of a (generated or edited) sequence, with safe automatic fixes.
  * The score is a transparent sum of penalties so versions can be compared.
  */
-import { type MediaAsset, type ProductionMeta, type Sequence, clipEnd, framesToSeconds, sequenceDuration } from '../core';
+import { type MediaAsset, type ProductionMeta, type Sequence, subtitleChars, clipEnd, framesToSeconds, sequenceDuration, summariseGraph } from '../core';
 import type { EditStyle, ProductionPreferences } from './preferences';
 
 export type QcIssue = ProductionMeta['qcIssues'][number];
@@ -49,11 +49,11 @@ export function runQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: P
   for (const o of ctx.offScript ?? []) issues.push({ severity: 'warning', code: 'off-script', message: `Paroles absentes du script ${o.start.toFixed(1)}–${o.end.toFixed(1)} s (prise ratée ou improvisation ?) : “${o.text.slice(0, 80)}${o.text.length > 80 ? '…' : ''}”`, frame: Math.round((o.start * r.num) / r.den) });
   if (placeholders) issues.push({ severity: 'error', code: 'missing-visual', message: `${placeholders} plan(s) sans image — ajoutez des médias ou régénérez` });
   const weak = seq.production?.shots.filter((s) => s.quality === 'weak').length ?? 0;
-  if (weak) issues.push({ severity: 'info', code: 'weak-match', message: `${weak} plan(s) avec une image générique (aucune correspondance précise)` });
+  if (weak) issues.push({ severity: 'info', code: 'weak-match', message: `${weak} plan(s) à correspondance faible (lien de section ou mots-clés seulement) — à vérifier` });
   // captions
   for (const c of seq.captions) {
     const lines = c.text.split('\n');
-    if (c.style === 'subtitle' && (lines.length > 2 || lines.some((l) => l.length > 48))) issues.push({ severity: 'warning', code: 'caption-overflow', message: `Sous-titre trop long à ${sec(c.start).toFixed(1)} s`, frame: c.start });
+    if (c.style === 'subtitle' && (lines.length > 2 || lines.some((l) => l.length > subtitleChars(seq.settings.width, seq.settings.height) + 4))) issues.push({ severity: 'warning', code: 'caption-overflow', message: `Sous-titre trop long à ${sec(c.start).toFixed(1)} s`, frame: c.start });
     if (c.style === 'subtitle' && c.end - c.start < Math.round(0.7 * (r.num / r.den))) issues.push({ severity: 'info', code: 'caption-fast', message: `Sous-titre affiché < 0,7 s à ${sec(c.start).toFixed(1)} s`, frame: c.start });
   }
   if (ctx.alignmentConfidence !== undefined && ctx.alignmentConfidence < 0.5)
@@ -114,4 +114,78 @@ export function measureStyle(seq: Sequence): EditStyle {
     duckDepthDb: music ? (seq.tracks.filter((t) => t.kind === 'audio')[1]?.duck?.depthDb ?? 0) : null,
     subtitles: seq.captions.some((c) => c.style === 'subtitle'),
   };
+}
+
+/** Share of rect `z` hidden outside window `w` (0 = fully visible, 1 = fully hidden). */
+export function hiddenShare(z: { x: number; y: number; w: number; h: number }, w: { x: number; y: number; w: number; h: number }): number {
+  const ix = Math.max(0, Math.min(z.x + z.w, w.x + w.w) - Math.max(z.x, w.x));
+  const iy = Math.max(0, Math.min(z.y + z.h, w.y + w.h) - Math.max(z.y, w.y));
+  const area = z.w * z.h;
+  return area > 0 ? 1 - (ix * iy) / area : 0;
+}
+
+/**
+ * Editorial review of a generated version, from its decision graph: what a person should check.
+ * Matches based only on metadata, low-confidence proposals, rejected decisions without a
+ * replacement, lettering cut by the framing (when text zones are known), uncertain panel
+ * detection, music without a declared licence. Codes start with `review-`.
+ */
+export function reviewQc(seq: Sequence, media: Record<string, MediaAsset>, prefs: Pick<ProductionPreferences, 'reviewThreshold'> & Partial<ProductionPreferences>): QcIssue[] {
+  const issues: QcIssue[] = [];
+  const g = seq.production?.edg;
+  if (!g) return issues;
+  const r = seq.settings.frameRate;
+  const sec = (f: number) => framesToSeconds(f, r).toFixed(1);
+  const threshold = prefs.reviewThreshold ?? 0.45;
+  const sum = summariseGraph(g, threshold);
+  if (sum.metadataOnly) issues.push({ severity: 'info', code: 'review-metadata-only', message: `${sum.metadataOnly} plan(s) choisi(s) d’après les noms de fichiers, étiquettes ou dossiers : le contenu des images n’est pas analysé. Vérifiez qu’elles montrent bien ce que dit la narration (ajoutez une description ou activez l’OCR local pour des correspondances fondées sur le contenu).` });
+  const clips = new Map(seq.tracks.flatMap((t) => t.clips.map((c) => [c.id, c] as const)));
+  for (const d of g.decisions) {
+    const at = d.anchor.start;
+    if (d.state === 'rejetée') {
+      issues.push({ severity: 'warning', code: 'review-rejected', message: `${d.kind === 'musique' ? 'Musique' : 'Plan'} à ${sec(at)} s rejeté sans remplaçant : choisissez un autre média`, frame: at });
+      continue;
+    }
+    if (d.kind === 'visuel' && d.state === 'proposée' && d.chosen.mediaId && !d.chosen.generated && d.confidence < threshold)
+      issues.push({ severity: 'warning', code: 'review-low-confidence', message: `Plan à ${sec(at)} s : correspondance faible (${Math.round(d.confidence * 100)} %) pour « ${d.anchor.text.slice(0, 60)}${d.anchor.text.length > 60 ? '…' : ''} » — acceptez, remplacez ou rejetez`, frame: at });
+    if (d.kind === 'musique' && d.chosen.mediaId) {
+      const m = media[d.chosen.mediaId];
+      if (m && !m.rights?.license && d.author === 'auto') issues.push({ severity: 'info', code: 'review-music-licence', message: `Musique « ${d.chosen.label} » : licence non déclarée — vérifiez vos droits avant de publier`, frame: at });
+    }
+    if (d.kind !== 'visuel') continue;
+    for (const id of d.clipIds) {
+      const c = clips.get(id);
+      const m = c && media[c.mediaId];
+      if (!c || !m || m.kind !== 'image' || !m.probe.video) continue;
+      if (m.panels && m.panelConfidence !== undefined && m.panelConfidence < 0.5 && c.motion.kind === 'panels')
+        issues.push({ severity: 'info', code: 'review-panels', message: `Plan à ${sec(c.start)} s : découpage des cases incertain (${Math.round(m.panelConfidence * 100)} %) — vérifiez la lecture case par case`, frame: c.start });
+      const zones = m.ocr?.zones ?? [];
+      if (!zones.length) continue;
+      const aspect = m.probe.video.width / m.probe.video.height;
+      const box = seq.settings.width / seq.settings.height;
+      // panel by panel: a zone half inside a window is cut (other panels' zones are legitimately out of view);
+      // Ken Burns: any zone pushed out of the frame at the tightest moment is lost
+      const panelPath = c.motion.kind === 'panels' && c.motion.path?.length ? c.motion.path : null;
+      const windows = panelPath ?? [zoomWindow(c.motion.kind, c.motion.amount, aspect, box)];
+      const cut = zones.filter((z) => windows.some((w) => {
+        const h = hiddenShare(z, w);
+        return panelPath ? h > 0.15 && h < 0.85 : h > 0.15;
+      })).length;
+      if (cut) issues.push({ severity: 'warning', code: 'review-framing', message: `Plan à ${sec(c.start)} s : le cadrage coupe ${cut} zone(s) de texte lues dans l’image (${m.name})`, frame: c.start });
+    }
+  }
+  return issues;
+}
+
+/** Visible part of a still (normalised to the image) at the tightest moment of a Ken Burns move (stills are fitted inside the frame). */
+function zoomWindow(kind: string, amount: number, imageAspect: number, boxAspect: number): { x: number; y: number; w: number; h: number } {
+  const z = kind === 'none' ? 1 : 1 + Math.max(0, amount);
+  const s0 = Math.min(boxAspect / imageAspect, 1);
+  const w = Math.min(1, boxAspect / (imageAspect * s0 * z));
+  const h = Math.min(1, 1 / (s0 * z));
+  const dx = 1 - w;
+  const dy = 1 - h;
+  const x = kind === 'pan-left' ? 0 : kind === 'pan-right' ? dx : dx / 2;
+  const y = kind === 'pan-up' ? 0 : kind === 'pan-down' ? dy : dy / 2;
+  return { x, y, w, h };
 }

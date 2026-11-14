@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { applyCommand } from '../../production/commands';
 import { DEFAULT_PREFERENCES, type ProductionPreferences } from '../../production/preferences';
 import { parseScript } from '../../production/script';
 import { NARRATION_KINDS, type NarrationKind } from '../../production/narrationFormat';
@@ -19,6 +20,9 @@ export function ProductionPanel() {
   const [format, setFormat] = useState<OutputFormat | ''>('');
   const [kind, setKind] = useState<NarrationKind | 'auto'>(saved?.narrationKind ?? 'auto');
   const [folders, setFolders] = useState<string[]>(saved?.mediaFolders ?? []);
+  const [vocabulary, setVocabulary] = useState(saved?.vocabulary ?? '');
+  const [inspired, setInspired] = useState<{ summary: string[]; changes: string[]; prefs: ProductionPreferences; name: string } | null>(null);
+  const [inspiring, setInspiring] = useState(false);
   const [prefsState, setPrefsState] = useState<PreferencesState | null>(null);
   const [prefs, setPrefs] = useState<ProductionPreferences>(DEFAULT_PREFERENCES);
   const audio = Object.values(media).filter((m) => m.probe.audio && !m.probe.video);
@@ -72,6 +76,7 @@ export function ProductionPanel() {
             />
           </div>
           <div className="prod-side">
+            <CommandBox prefs={prefs} onApply={(p) => setPrefs(p)} />
             <label className="field">
               <span>Narration (votre voix enregistrée)</span>
               <div className="row">
@@ -90,8 +95,8 @@ export function ProductionPanel() {
             </label>
             <label className="field">
               <span>Musique de fond (facultative)</span>
-              <select className="input" value={music} onChange={(e) => setMusic(e.target.value)}>
-                <option value="">Aucune</option>
+              <select className="input" value={music} onChange={(e) => setMusic(e.target.value)} data-testid="music-select">
+                <option value="">{prefs.musicFromLibrary ? 'Automatique : une piste par partie, depuis votre bibliothèque musicale' : 'Aucune'}</option>
                 {audio.filter((m) => m.id !== narration).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
@@ -111,7 +116,69 @@ export function ProductionPanel() {
                 + Ajouter un dossier
               </button>
               <span className="tiny">Les médias déjà dans le projet sont aussi utilisés. Étiquettes : noms de dossiers, noms de fichiers ou fichier « nom.tags.txt ».</span>
+              <label className="row" style={{ gap: 6, marginTop: 6 }}>
+                <input type="checkbox" data-testid="web-images" checked={prefs.webImages} onChange={(e) => set('webImages', e.target.checked)} />
+                Chercher aussi des images libres de droits sur Internet
+              </label>
+              <span className="tiny">
+                Désactivé par défaut. Si vous cochez : seuls les mots-clés (vos [VISUEL: …], noms propres et titres de section) sont envoyés à Openverse et Wikimedia Commons ; aucun fichier, aucune voix, aucun compte. Seules les licences CC0, domaine public, CC BY et CC BY-SA sont gardées ; les crédits sont enregistrés et joints à l'export. Les planches de comics sous droits restent vos propres fichiers.
+              </span>
             </div>
+            <label className="field">
+              <span>Noms propres de la vidéo (facultatif, séparés par des virgules)</span>
+              <input className="input" data-testid="vocabulary" value={vocabulary} onChange={(e) => setVocabulary(e.target.value)} placeholder="Ex. : Apocalypse, En Sabah Nur, Archangel" />
+              <span className="tiny">Guident la transcription locale et corrigent les noms mal reconnus (chaque correction est listée dans le rapport).</span>
+            </label>
+            <label className="field">
+              <span>Pages de comics (CBZ, PDF, dossier de pages numérotées)</span>
+              <select className="input" data-testid="story-order" value={prefs.storyOrder ?? 'auto'} onChange={(e) => set('storyOrder', e.target.value as ProductionPreferences['storyOrder'])}>
+                <option value="auto">Automatique : suivre l’ordre du livre quand vos images sont surtout ses pages</option>
+                <option value="on">Toujours suivre l’ordre des pages au fil de la narration</option>
+                <option value="off">Choisir chaque image selon le passage (noms, étiquettes, texte lu)</option>
+              </select>
+              <span className="tiny">Mode histoire : les pages défilent dans l’ordre, lues case par case, calées sur votre voix. Écrivez [VISUEL: page 12] pour imposer une page à un passage.</span>
+            </label>
+            <div className="field" data-testid="inspire">
+              <span>S’inspirer d’une vidéo</span>
+              <button className="btn" disabled={inspiring} data-testid="inspire-open" onClick={async () => {
+                setInspiring(true);
+                try {
+                  const r = await api.production.inspire(prefs);
+                  if (r) setInspired({ summary: r.profile.summary, changes: r.changes, prefs: r.prefs, name: r.profile.file.split(/[\\/]/).pop() ?? '' });
+                } catch (e) {
+                  toast(errorText(e), 'error');
+                } finally {
+                  setInspiring(false);
+                }
+              }}>
+                {inspiring ? 'Analyse en cours…' : 'Analyser une vidéo de référence…'}
+              </button>
+              <span className="tiny">Choisissez une vidéo enregistrée sur cet ordinateur : ses coupes, la durée de ses plans, ses mouvements et son volume sont mesurés ici, puis proposés comme réglages. Rien n’est envoyé.</span>
+              {inspired && (
+                <div className="live-view" data-testid="inspire-result">
+                  <div className="section-title" style={{ marginTop: 0 }}>Style de « {inspired.name} »</div>
+                  {inspired.summary.map((l, i) => <div key={i} className="tiny">{l}</div>)}
+                  {inspired.changes.length ? (
+                    <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                      <button className="btn primary" data-testid="inspire-apply" onClick={() => {
+                        setPrefs(inspired.prefs);
+                        toast(`Réglages repris : ${inspired.changes.join(' · ')}`, 'info');
+                        setInspired(null);
+                      }}>Appliquer ce style</button>
+                      <span className="tiny">{inspired.changes.join(' · ')}</span>
+                    </div>
+                  ) : <div className="tiny">Vos réglages correspondent déjà à ce style.</div>}
+                </div>
+              )}
+            </div>
+            <label className="field">
+              <span>Traitement de la voix</span>
+              <select className="input" data-testid="voice-style" value={prefs.voiceStyle ?? 'radio'} onChange={(e) => set('voiceStyle', e.target.value as ProductionPreferences['voiceStyle'])}>
+                <option value="radio">Voix radio : nettoyée, chaude, présente, niveau constant</option>
+                <option value="natural">Naturelle : seulement les corrections (bruit, ronflement, volume)</option>
+              </select>
+              <span className="tiny">Chaque traitement est choisi d’après les mesures de votre enregistrement et listé dans le rapport. Votre fichier d’origine n’est jamais modifié.</span>
+            </label>
             <div className="section-title">Réalisation</div>
             <div className="insp-row">
               <label>Durée des plans</label>
@@ -176,6 +243,9 @@ export function ProductionPanel() {
                   ['autoDirection', 'Adapter la réalisation au type de narration'],
                   ['tightenPauses', 'Resserrer les longues pauses'],
                   ['cutDisfluencies', 'Couper les « euh » et les répétitions'],
+                  ['musicFromLibrary', 'Musique par section depuis ma bibliothèque musicale'],
+                  ['keepUnchanged', 'En régénérant, garder les plans des passages inchangés'],
+                  ['fillUnrelated', 'Remplir avec des images sans rapport avec le passage (déconseillé)'],
                 ] as const
               ).map(([k, l]) => (
                 <label key={k} className="row" style={{ gap: 6 }}>
@@ -211,11 +281,12 @@ export function ProductionPanel() {
             )}
           </div>
         </div>
+        {task?.live && <LiveView live={task.live} />}
         {task && (
           <div className="task" data-testid="production-progress">
             <div className="row">
               <span style={{ flex: 1 }}>{task.message ?? 'Démarrage…'}</span>
-              <span className={`pill ${task.state}`}>{task.state}</span>
+              <span className={`pill ${task.state}`}>{({ queued: 'en attente', running: 'en cours', verifying: 'vérification', done: 'terminé', failed: 'échec', cancelled: 'annulé' } as Record<string, string>)[task.state] ?? task.state}</span>
             </div>
             <div className="progress">
               <div style={{ width: `${Math.round(task.progress * 100)}%` }} />
@@ -231,7 +302,7 @@ export function ProductionPanel() {
         )}
         <div className="actions">
           <span className="tiny" style={{ flex: 1 }}>
-            Tout se fait sur cet ordinateur. Rien n'est envoyé. Chaque génération crée une nouvelle version ; vos retouches restent intactes.
+            {prefs.webImages ? 'Tout se fait sur cet ordinateur, sauf la recherche d\'images libres que vous avez activée (mots-clés seulement). Chaque' : 'Tout se fait sur cet ordinateur. Rien n\'est envoyé. Chaque'} génération crée une nouvelle version ; vos retouches restent intactes, et vos décisions verrouillées ou acceptées sont reprises.
           </span>
           <button className="btn" onClick={close} disabled={busy}>
             Annuler
@@ -242,7 +313,7 @@ export function ProductionPanel() {
             disabled={busy || !narration || (parsed.sentences.length === 0 && !transcriberOn)}
             onClick={async () => {
               if (JSON.stringify(prefs) !== JSON.stringify(prefsState?.current)) setPrefsState(await api.production.setPreferences(prefs, 'adjusted in the production panel'));
-              const ok = await runProduction({ script, narrationMediaId: narration, musicMediaId: music || null, mediaFolders: folders, narrationKind: kind, ...(format ? { format } : {}) }, prefs);
+              const ok = await runProduction({ script, narrationMediaId: narration, musicMediaId: music || null, mediaFolders: folders, vocabulary, narrationKind: kind, ...(format ? { format } : {}) }, prefs);
               if (ok) store.set({ overlay: null });
             }}
           >
@@ -250,6 +321,110 @@ export function ProductionPanel() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Live view while the edit is being built: current stage, latest rendered picture, storyboard filling up. */
+function LiveView({ live }: { live: NonNullable<import('../../shared/api').TaskInfo['live']> }) {
+  const url = (f: string) => `pmedia://local/${encodeURIComponent(f)}`;
+  const board = live.board ?? [];
+  const ready = board.filter((b) => b.thumb).length;
+  return (
+    <div className="live-view" data-testid="production-live">
+      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+        <div className="live-latest">{live.latest ? <img src={url(live.latest)} alt="Dernier rendu" /> : <span className="tiny muted">En attente du premier rendu…</span>}</div>
+        <div style={{ flex: 1 }}>
+          <div className="section-title" style={{ marginTop: 0 }}>En direct : {live.stage}</div>
+          {live.detail && <div className="tiny">{live.detail}</div>}
+          {board.length > 0 && (
+            <div className="tiny">
+              Storyboard : {board.length} plans · {ready} prêts · {board.filter((b) => b.kind === 'missing').length} sans visuel
+            </div>
+          )}
+        </div>
+      </div>
+      {board.length > 0 && (
+        <div className="live-board" data-testid="production-board">
+          {board.map((b, i) => (
+            <div key={i} className={`live-shot ${b.kind}`} title={`${b.start.toFixed(1)}–${b.end.toFixed(1)} s · ${b.label}\n${b.text}`}>
+              {b.thumb ? <img src={url(b.thumb)} alt={b.label} loading="lazy" /> : <div className="live-pending">{b.kind === 'missing' ? 'manquant' : '…'}</div>}
+              <span>{b.start.toFixed(0)} s</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Edit instructions in plain French, typed or spoken (recorded here, transcribed by the local model):
+ * the changes are listed, then applied to the settings; "Générer" makes the new version.
+ */
+function CommandBox({ prefs, onApply }: { prefs: ProductionPreferences; onApply: (p: ProductionPreferences) => void }) {
+  const [text, setText] = useState('');
+  const [rec, setRec] = useState<'idle' | 'recording' | 'transcribing'>('idle');
+  const [last, setLast] = useState<{ changes: string[]; unknown: string[] } | null>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const apply = async () => {
+    const r = applyCommand(text, prefs);
+    setLast({ changes: r.changes, unknown: r.unknown });
+    if (r.placement) {
+      const st = await api.settings.get();
+      await api.settings.set({ pcore: { ...st.pcore, placement: { ...st.pcore?.placement, ...r.placement } } });
+    }
+    if (r.changes.length) {
+      onApply(r.prefs);
+      toast(`Compris : ${r.changes.join(' · ')}. Cliquez sur « Générer la vidéo » pour la nouvelle version.`, 'info');
+    }
+  };
+  const record = async () => {
+    if (rec === 'recording') return recorder.current?.stop();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks: Blob[] = [];
+      const mr = new MediaRecorder(stream);
+      recorder.current = mr;
+      mr.ondataavailable = (e) => chunks.push(e.data);
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRec('transcribing');
+        try {
+          const buf = new Uint8Array(await new Blob(chunks).arrayBuffer());
+          const said = await api.production.transcribeCommand(buf);
+          setText((t) => (t ? `${t}. ${said}` : said));
+        } catch (e) {
+          toast(errorText(e), 'error');
+        } finally {
+          setRec('idle');
+        }
+      };
+      mr.start();
+      setRec('recording');
+    } catch (e) {
+      toast(`Micro indisponible : ${errorText(e)}`, 'error');
+    }
+  };
+  return (
+    <div className="field" data-testid="command-box">
+      <span>Retouches en français (texte ou voix)</span>
+      <textarea className="input" data-testid="command-input" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex. : plans plus courts, baisse la musique de 3 dB, logo en haut à gauche, voix radio" />
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn" data-testid="command-mic" disabled={rec === 'transcribing'} onClick={record}>
+          {rec === 'recording' ? '■ Arrêter' : rec === 'transcribing' ? 'Transcription…' : '🎤 Dicter'}
+        </button>
+        <button className="btn primary" data-testid="command-apply" disabled={!text.trim()} onClick={apply}>
+          Appliquer
+        </button>
+      </div>
+      {last && (
+        <div className="tiny" data-testid="command-result">
+          {last.changes.length ? `Appliqué : ${last.changes.join(' · ')}` : 'Rien n’a été changé.'}
+          {last.unknown.length ? ` — Pas compris : « ${last.unknown.join(' », « ')} » (reformulez : plans, cases, musique, voix, sous-titres, titres, noms, logo, mouvement, fondus, pauses, hésitations…)` : ''}
+        </div>
+      )}
+      <span className="tiny">La voix est transcrite sur cet ordinateur. Chaque changement est listé ; rien n’est deviné.</span>
     </div>
   );
 }

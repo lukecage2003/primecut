@@ -60,9 +60,9 @@ describe('Script-to-Video', () => {
     const stages: string[] = [];
     const res = await produceVideo(
       { project, projectDir: dir, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], prefs: { ...DEFAULT_PREFERENCES, shotTarget: 3, shotMin: 1.5 } },
-      (_, m) => stages.push(m),
+      (_, m) => stages.at(-1) !== m && stages.push(m), // finer progress inside a stage repeats its label
     );
-    expect(stages.filter((x) => !x.startsWith('Rendu'))).toEqual(['Analyse de la narration', 'Nettoyage de la voix', 'Synchronisation du texte et de la voix', 'Indexation des médias', 'Construction du montage', 'Contrôle qualité', expect.stringMatching(/Contrôle qualité \d+/)]);
+    expect(stages.filter((x) => !x.startsWith('Rendu'))).toEqual(['Analyse de la narration', 'Nettoyage de la voix', 'Synchronisation du texte et de la voix', 'Indexation des médias', 'Direction de P-CORE', 'Construction du montage', 'Contrôle qualité', expect.stringMatching(/Contrôle qualité \d+/)]);
     // sound design: procedural SFX on their own track, rendered as real audio files
     const sfxTrack = res.sequence.tracks.find((t) => t.name === 'SFX');
     expect(sfxTrack?.clips.length).toBeGreaterThan(0);
@@ -142,8 +142,10 @@ describe('comic page read panel by panel', async () => {
     await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1000x1500', '-vf',
       'drawbox=x=40:y=40:w=440:h=680:c=red:t=fill,drawbox=x=520:y=40:w=440:h=680:c=green:t=fill,drawbox=x=40:y=780:w=440:h=680:c=blue:t=fill,drawbox=x=520:y=780:w=440:h=680:c=yellow:t=fill',
       '-frames:v', '1', pageFile]);
-    const panels = await detectPagePanels(pageFile, 1000, 1500);
+    const det = await detectPagePanels(pageFile, 1000, 1500);
+    const panels = det?.panels;
     expect(panels).toHaveLength(4);
+    expect(det!.confidence).toBeGreaterThan(0.7); // clean gutters: the layout split cleanly
     const project = createProject('Pages', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
     const a = await importMediaFile(pageFile);
     project.media[a.id] = a;
@@ -157,18 +159,23 @@ describe('comic page read panel by panel', async () => {
     });
     const out = path.join(dir, 'panels.mp4');
     await exportSequence({ project: h.present, sequenceId: h.present.activeSequenceId, output: out });
-    const centre = async (t: number) => {
-      const { stdout } = await ffmpeg(['-v', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-vf', 'crop=iw/4:ih/4:iw*3/8:ih*3/8,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
+    // colour where panel k appears in the frame (the window keeps the page on screen: the panel is not always centred)
+    const wins = panels!.map((p) => windowFor(p, 1000 / 1500, 16 / 9));
+    const at = async (t: number, k: number) => {
+      const p = panels![k]!, w = wins[k]!;
+      const fx = (p.x + p.w / 2 - w.x) / w.w, fy = (p.y + p.h / 2 - w.y) / w.h;
+      const { stdout } = await ffmpeg(['-v', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-vf', `crop=iw/12:ih/12:iw*${(fx - 1 / 24).toFixed(4)}:ih*${(fy - 1 / 24).toFixed(4)},scale=1:1`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { collectStdout: true });
       return [stdout[0]!, stdout[1]!, stdout[2]!] as [number, number, number];
     };
+    for (const w of wins) expect(w.x).toBeGreaterThanOrEqual((1000 / 1500 - w.w * (1000 / 1500)) / 2 / (1000 / 1500) - 1e-6); // no one-sided empty band
 
-    const [r1, g1, b1] = await centre(0.6);
+    const [r1, g1, b1] = await at(0.6, 0);
     expect(r1 > 200 && g1 < 60 && b1 < 60).toBe(true); // panel 1 red
-    const [r2, g2] = await centre(2.6);
+    const [r2, g2] = await at(2.6, 1);
     expect(g2 > 100 && r2 < 60).toBe(true); // panel 2 green
-    const [, , b3] = await centre(4.6);
+    const [, , b3] = await at(4.6, 2);
     expect(b3).toBeGreaterThan(200); // panel 3 blue
-    const [r4, g4, b4] = await centre(6.6);
+    const [r4, g4, b4] = await at(6.6, 3);
     expect(r4 > 200 && g4 > 200 && b4 < 60).toBe(true); // panel 4 yellow
   });
 });
@@ -251,7 +258,7 @@ describe('pause tightening', () => {
     const project = createProject('T', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
     const narr = await importMediaFile(n.file, d);
     project.media[narr.id] = narr;
-    const res = await produceVideo({ project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, tightenPauses: true, voiceCleanup: false } });
+    const res = await produceVideo({ project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], prefs: { ...DEFAULT_PREFERENCES, tightenPauses: true, cutDisfluencies: false, voiceCleanup: false } });
     const narrClip = res.sequence.tracks.flatMap((t) => t.clips).find((c) => res.newMedia.find((m) => m.id === c.mediaId)?.derived)!;
     const tight = res.newMedia.find((m) => m.id === narrClip.mediaId)!;
     expect(tight.name).toMatch(/pauses resserrées/);
@@ -265,7 +272,7 @@ describe('pause tightening', () => {
 });
 
 describe('hesitations and repetitions', () => {
-  it('reports them by default and, when asked, removes them in a derived copy with the edit kept in sync', async () => {
+  it('reports them when the option is off and removes them (default) in a derived copy with the edit kept in sync', async () => {
     const d = tmpDir('ps-disf-');
     const n = await makeNarration(d, SENTENCES, 0.6);
     // word-timed transcript from the known sentence spans, with an "euh" and a doubled word inside sentence 2
@@ -279,11 +286,11 @@ describe('hesitations and repetitions', () => {
     const narr = await importMediaFile(n.file, d);
     project.media[narr.id] = narr;
     const base = { project, projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [], transcript };
-    const reported = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false } });
+    const reported = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: false } });
     const note = reported.sequence.production!.qcIssues.find((i) => i.code === 'disfluency')!;
     expect(note.message).toMatch(/2 hésitation\(s\) ou répétition\(s\)/);
     expect(note.message).toMatch(/« euh »/);
-    expect(reported.newMedia.some((m) => m.derived)).toBe(false); // nothing removed without consent
+    expect(reported.newMedia.some((m) => m.derived)).toBe(false); // option off: reported, nothing removed
 
     const cut = await produceVideo({ ...base, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, cutDisfluencies: true } });
     const clip = cut.sequence.tracks.flatMap((t) => t.clips).find((c) => cut.newMedia.find((m) => m.id === c.mediaId)?.derived)!;
@@ -375,4 +382,50 @@ describe('duplicate pictures in the library', () => {
     }
     expect(names.length).toBeGreaterThanOrEqual(3);
   }, 120000);
+});
+
+describe('decisions, music per section and regeneration (real files)', () => {
+  it('chooses music per section from the indexed library, records decisions, and keeps a lock on regeneration', async () => {
+    const { scanMusicLibrary } = await import('../../src/engine');
+    const { chooseCandidate } = await import('../../src/core');
+    const d = tmpDir('ps-edg-');
+    const mlib = path.join(d, 'Musique');
+    fs.mkdirSync(mlib);
+    const beat = (file: string, bpm: number, sec: number, amp: number) => ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', `aevalsrc='${amp}*(random(0)*2-1)*exp(-30*mod(t\\,${(60 / bpm).toFixed(4)}))':s=44100:d=${sec}`, '-metadata', 'copyright=CC0', '-y', file]);
+    await beat(path.join(mlib, 'rapide.wav'), 160, 12, 0.7);
+    await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.1*sin(2*PI*220*t)':s=44100:d=12", '-metadata', 'copyright=CC0', '-y', path.join(mlib, 'nappe.wav')]);
+    const musicIndexFile = path.join(d, 'music-index.json');
+    await scanMusicLibrary([mlib], musicIndexFile);
+    const project = createProject('EDG', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    const narr = await importMediaFile(narrationFile, d);
+    project.media[narr.id] = narr;
+    const mediaIndexFile = path.join(d, 'media-index.json');
+    const req = { projectDir: d, script: SCRIPT, narrationMediaId: narr.id, mediaFolders: [path.join(dir, 'library')], musicIndexFile, mediaIndexFile, prefs: { ...DEFAULT_PREFERENCES, voiceCleanup: false, sfx: false, pcore: 'off' as const } };
+    const v1 = await produceVideo({ ...req, project });
+    const p1 = v1.sequence.production!;
+    expect(p1.edg!.decisions.filter((x) => x.kind === 'visuel').length).toBe(p1.shots.length);
+    expect(p1.music!.length).toBeGreaterThanOrEqual(1);
+    expect(p1.music!.every((m) => m.reasons.length > 0 && m.trackId)).toBe(true);
+    expect(p1.narrative!.length).toBe(2);
+    const a2 = v1.sequence.tracks.filter((t) => t.kind === 'audio')[1]!;
+    expect(a2.clips.length).toBeGreaterThan(0);
+    expect(p1.edg!.decisions.some((x) => x.kind === 'musique' && x.clipIds.every((id) => a2.clips.some((c) => c.id === id)))).toBe(true);
+    expect(p1.qcIssues.some((i) => i.code === 'review-metadata-only')).toBe(true);
+    // the user locks the Osborn shot on another picture of the library, then regenerates
+    for (const m of v1.newMedia) project.media[m.id] = m;
+    project.sequences[v1.sequence.id] = v1.sequence;
+    project.activeSequenceId = v1.sequence.id;
+    const osborn = p1.edg!.decisions.find((x) => x.anchor.text.includes('Osborn'))!;
+    const other = Object.values(project.media).find((m) => m.kind === 'image' && m.id !== osborn.chosen.mediaId && !m.generator)!;
+    chooseCandidate(v1.sequence, project.media, osborn.id, other.id);
+    const v2 = await produceVideo({ ...req, project });
+    const o2 = v2.sequence.production!.edg!.decisions.find((x) => x.id === osborn.id)!;
+    expect(o2.state).toBe('verrouillée');
+    expect(v2.newMedia.concat(Object.values(project.media)).find((m) => m.id === o2.chosen.mediaId)?.path).toBe(other.path);
+    // another project scanning the same folder reuses the persistent index (no re-analysis)
+    const fresh = createProject('Autre', { width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    fresh.media[narr.id] = narr;
+    const v3 = await produceVideo({ ...req, project: fresh });
+    expect(v3.report.notes.join(' ')).toMatch(/Index des médias : 4 réutilisé\(s\), 0 analysé/);
+  }, 240000);
 });

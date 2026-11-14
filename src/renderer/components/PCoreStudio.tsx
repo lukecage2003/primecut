@@ -13,7 +13,10 @@ import { mediaUrl } from '../../shared/api';
 import { api } from '../api';
 import { edit, updateSettings } from '../actions';
 import { currentProject, currentSequence, store, toast, useEditor, useStore } from '../store';
+import { PCoreV2Controls } from './PCoreV2';
+import { EXPRESSIONS } from '../../pcore/v2/expressions';
 
+const EXPR_COLORS: Record<string, string> = { dormant: '#222', awakening: '#7a6a10', active: '#c9a400', 'deep-focus': '#3aa0ff', 'energy-expansion': '#ff8a00', 'orbital-motion': '#e0c060', fragmentation: '#b45cff', reconstruction: '#8a5cff', revelation: '#ffffff', 'cinematic-transition': '#9a7cff', silence: '#555', 'final-stabilization': '#806a30' };
 const STATE_COLORS: Record<string, string> = { idle: '#333', silence: '#555', listening: '#7a6a10', speaking: '#c9a400', emphasis: '#ffd400', intense: '#ff8a00', focus: '#3aa0ff', transition: '#b45cff', reveal: '#ffffff' };
 const RES: Record<string, [number, number]> = { '1920×1080': [1920, 1080], '3840×2160': [3840, 2160], '1080×1920': [1080, 1920], '1080×1080': [1080, 1080] };
 
@@ -57,7 +60,8 @@ export function PCoreStudio() {
   const setPl = (p: Partial<PlacementSettings>) => void updateSettings({ pcore: { ...appSettings.pcore, placement: { ...appSettings.pcore?.placement, ...p } } });
   const audioPath = project.media[audioId]?.path ?? null;
   const events = useMemo(() => markerEvents(seq.markers, fps), [seq.markers, fps]);
-  const req = { audioPath, offsetSec: start, durationSec: dur, fps: fpsR, composition, events };
+  const prodCues = seq.production?.pcore?.cues;
+  const req = { audioPath, offsetSec: start, durationSec: dur, fps: fpsR, composition, events, ...(prodCues && audioId === seq.production?.narrationMediaId ? { cues: prodCues } : {}) };
 
   useEffect(() => api.pcore.onProgress(setProgress), []);
   useEffect(() => {
@@ -74,7 +78,7 @@ export function PCoreStudio() {
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioId, start, dur, JSON.stringify(s), JSON.stringify(events)]);
+  }, [audioId, start, dur, JSON.stringify(s), JSON.stringify(events), JSON.stringify(appSettings.pcore?.v2), appSettings.pcore?.engine]);
   useEffect(() => {
     const c = canvas.current;
     if (!c || !graph) return;
@@ -84,8 +88,8 @@ export function PCoreStudio() {
     g.clearRect(0, 0, W, H);
     const n = graph.states.length;
     const x = (i: number) => (i / Math.max(1, n - 1)) * W;
-    graph.states.forEach((st, i) => {
-      g.fillStyle = STATE_COLORS[st] ?? '#444';
+    (graph.expr ?? graph.states).forEach((st, i) => {
+      g.fillStyle = (graph.expr ? EXPR_COLORS[st] : STATE_COLORS[st]) ?? '#444';
       g.fillRect(x(i), H - 10, W / n + 1, 10);
     });
     const line = (vals: number[], color: string) => {
@@ -162,16 +166,22 @@ export function PCoreStudio() {
             <div className="section-title">Réponse audio</div>
             <canvas ref={canvas} width={620} height={120} style={{ width: '100%', height: 120, background: '#0b0b0b', borderRadius: 6 }} data-testid="pcore-graph" />
             <div className="tiny">
-              Jaune : enveloppe de la voix · brun/bleu : graves/aigus · blanc : énergie de P-CORE · bande : état (
-              {Object.entries(STATE_COLORS).map(([k, c]) => (
-                <span key={k} style={{ color: c === '#333' ? '#888' : c, marginRight: 6 }}>
-                  {k}
+              Jaune : enveloppe de la voix · brun/bleu : graves/aigus · blanc : énergie de P-CORE · bande : {graph?.expr ? 'expression dominante' : 'état'} (
+              {Object.entries(graph?.expr ? EXPR_COLORS : STATE_COLORS).map(([k, c]) => (
+                <span key={k} style={{ color: c === '#333' || c === '#222' ? '#888' : c, marginRight: 6 }}>
+                  {graph?.expr ? EXPRESSIONS[k as keyof typeof EXPRESSIONS]?.label ?? k : k}
                 </span>
               ))}
               )
             </div>
-            {/* C. expression controls */}
-            <div className="section-title">Expression</div>
+            {graph?.cues && (
+              <div className="tiny" data-testid="pcore-window-cues">
+                Choix du directeur sur cette fenêtre : {graph.cues.filter((c) => c.start < start + dur && c.start + c.duration > start).map((c) => `${(c.start - start).toFixed(1)} s ${EXPRESSIONS[c.expression].label}`).join(' · ') || 'aucune réaction (base seulement)'}
+              </div>
+            )}
+            <PCoreV2Controls onPreviewExpression={(id) => run('Calcul de l’aperçu', async () => setPreview(await api.pcore.preview(e.file, { ...req, size: 540, expression: id, durationSec: Math.max(dur, EXPRESSIONS[id].duration.default + 1) })))} />
+            {/* C. expression controls (V1.1 engine) */}
+            <div className="section-title">Expression — moteur V1.1</div>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
               <Range label="Intensité" value={s.intensity} min={0.3} max={1.5} step={0.05} onChange={(v) => setS({ intensity: v })} />
               <Range label="Transitions (ms)" value={s.transitionMs} min={100} max={1500} step={50} onChange={(v) => setS({ transitionMs: v })} />

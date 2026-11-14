@@ -95,7 +95,7 @@ export function ExportDialog() {
         )}
         <label className="row" style={{ gap: 6 }}>
           <input type="checkbox" data-testid="export-subtitle-files" checked={s.subtitleFiles !== false} onChange={(e) => setS({ subtitleFiles: e.target.checked })} />
-          Écrire aussi les sous-titres à côté de la vidéo (.srt et .vtt, même nom — remplacés s'ils existent)
+          Écrire aussi les sous-titres en fichiers (.srt et .vtt) dans un dossier à part, pour YouTube et TikTok — jamais à côté de la vidéo, où les lecteurs les afficheraient par-dessus les sous-titres incrustés
         </label>
         <div className="tiny">Le fichier est rendu sous un nom temporaire puis vérifié (flux, résolution, nombre exact d'images) avant d'être publié.</div>
         <div className="actions">

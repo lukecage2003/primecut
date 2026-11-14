@@ -18,9 +18,21 @@ export interface TaskResources {
   gpu?: boolean;
 }
 
+/** Live view of a long task (production): what is being built, shown while it runs. */
+export interface TaskLive {
+  stage: string;
+  /** Storyboard of the edit as it is decided and rendered (thumbnail files appear when ready). */
+  board?: { start: number; end: number; kind: 'image' | 'composition' | 'missing'; label: string; text: string; thumb?: string }[];
+  /** Most recent picture produced (rendered composition, P-CORE frame…). */
+  latest?: string;
+  detail?: string;
+}
+
 export interface TaskContext {
   signal: AbortSignal;
   progress(fraction: number, message?: string): void;
+  /** Updates the live view (merged into the previous one). */
+  live?(patch: Partial<TaskLive>): void;
   log(line: string): void;
 }
 
@@ -51,6 +63,7 @@ export interface TaskInfo {
   endedAt?: number;
   dependsOn: string[];
   resources: TaskResources;
+  live?: TaskLive;
 }
 
 interface Internal {
@@ -183,6 +196,14 @@ export class TaskOrchestrator extends EventEmitter {
         if (message) t.info.message = message;
         const now = Date.now();
         if (now - lastEmit > 100) {
+          lastEmit = now;
+          this.changed(t.info);
+        }
+      },
+      live: (patch) => {
+        t.info.live = { stage: '', ...t.info.live, ...patch };
+        const now = Date.now();
+        if (now - lastEmit > 150) {
           lastEmit = now;
           this.changed(t.info);
         }

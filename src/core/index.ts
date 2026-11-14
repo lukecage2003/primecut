@@ -13,3 +13,4 @@ export * from './generators';
 export * from './ducking';
 export * from './comicFormat';
 export * from './phash';
+export * from './edg';

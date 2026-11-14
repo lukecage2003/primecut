@@ -1,7 +1,7 @@
 import type { Rational } from './time';
 
 /** Current native project schema version. Bump together with a migration in migrations.ts. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type MediaKind = 'video' | 'audio' | 'image';
 export type TrackKind = 'video' | 'audio';
@@ -83,12 +83,31 @@ export interface MediaAsset {
   derived?: { from: string; kind: 'voice-cleanup'; steps: string[] };
   /** Comics format of a still (cover, page, double page, webtoon, manga…) detected at import. */
   comic?: import('./comicFormat').ComicImageInfo;
+  /** Page of a comic book given as a CBZ/ZIP archive or a PDF: the book and its reading order. */
+  page?: { book: string; n: number; of: number };
   /** Perceptual fingerprint (dHash, 16 hex digits) used to recognise duplicate pictures. */
   phash?: string;
   /** Detected comic panels (normalised rects, reading order) for page-like stills. */
   panels?: { x: number; y: number; w: number; h: number }[];
   /** Free tags (user sidecar tags, detected entities) used by automatic media matching. */
   tags?: string[];
+  /** What the picture shows, written by the user (sidecar `.json` "description" or the inspector). */
+  description?: string;
+  /** Text read in the picture by a local OCR engine (never sent anywhere). */
+  ocr?: MediaOcr;
+  /** Confidence (0..1) of the panel detection: low when the layout did not split cleanly. */
+  panelConfidence?: number;
+}
+
+export interface MediaOcr {
+  engine: string;
+  /** Recognised text (words kept above the engine's confidence threshold). */
+  text: string;
+  /** Mean word confidence 0..1. */
+  confidence: number;
+  /** Text zones (normalised rects): grouped word boxes, used to avoid cropping lettering. */
+  zones: { x: number; y: number; w: number; h: number }[];
+  at: string;
 }
 
 export interface ClipTransform {
@@ -226,6 +245,12 @@ export interface ProductionShotMeta {
   quality: 'strong' | 'weak' | 'missing' | 'generated';
   reasons: string[];
   text: string;
+  /** Decision of the edit decision graph that produced this shot. */
+  decisionId?: string;
+  /** 0..1 confidence of the match (metadata-only matches stay ≤ 0.75). */
+  confidence?: number;
+  /** The match relies only on file names, tags or folders: the picture's content was not analysed. */
+  metadataOnly?: boolean;
 }
 
 export interface ProductionMeta {
@@ -243,6 +268,14 @@ export interface ProductionMeta {
   voice?: ProductionVoice;
   /** Detected (or forced) narration format and the direction changes it caused. */
   narrationFormat?: ProductionNarrationFormat;
+  /** Edit decision graph: source of truth of the editorial decisions of this version. */
+  edg?: import('./edg').EditDecisionGraph;
+  /** Narrative structure found in the script (function of each section, with evidence). */
+  narrative?: { section: number; title: string; fn: string; label: string; confidence: number; evidence: string[]; intensity: number }[];
+  /** P-CORE V2 direction of this version: the director's cues, your edits (kept on regeneration) and its log. */
+  pcore?: { engine: 'v2'; preset: string; cues: import('../pcore/v2/director').PCoreCue[]; edits: import('../pcore/v2/director').CueEdit[]; added: import('../pcore/v2/director').PCoreCue[]; log: string[]; usedText: boolean };
+  /** Music chosen per section (from the local music library), with the reasons. */
+  music?: { trackId: string | null; mediaId: string | null; title: string; start: number; end: number; sections: number[]; reasons: string[]; confidence: number; decisionId?: string }[];
 }
 
 export interface ProductionNarrationFormat {
@@ -404,7 +437,14 @@ export interface PCoreClipSpec {
   size: number;
   composition: 'core' | 'floating' | 'minimal';
   seed: number;
-  mode: 'hero' | 'side' | 'corner';
+  mode: 'hero' | 'side' | 'corner' | 'cinematic';
   /** Narrative/marker events (seconds on the narration). */
   events: { time: number; duration: number; state: 'reveal' | 'focus' | 'transition' | 'emphasis' | 'intense'; source: 'semantic' | 'marker'; label?: string }[];
+  /** P-CORE V2: layered scene, director cues (seconds on the narration) and the settings used.
+   *  Absent on V1.1 clips, which keep rendering exactly as before. */
+  engine?: 'v2';
+  cues?: import('../pcore/v2/director').PCoreCue[];
+  v2?: import('../pcore/v2/config').PCoreV2Settings;
+  /** Presenter mode: chapter titles (seconds on the narration) shown by the P-CORE data matrix. */
+  chapters?: { time: number; title: string }[];
 }

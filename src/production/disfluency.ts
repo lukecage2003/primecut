@@ -75,6 +75,27 @@ export function detectDisfluencies(words: RecognisedWord[], o: DisfluencyOptions
   return out.map((d) => ({ ...d, start: Math.max(0, +d.start.toFixed(3)), end: +d.end.toFixed(3) })).filter((d) => d.end - d.start >= 0.05);
 }
 
+/**
+ * Sounds between two words that the recogniser did not write (a long "euuuh", a click, a breath held
+ * with the voice on): the gap between the words is long, and the audio is not silent in it. A short
+ * natural pause is kept on each side.
+ */
+export function untranscribedSounds(words: RecognisedWord[], silences: Interval[], o: { minGap?: number; maxGap?: number; keep?: number } = {}): Disfluency[] {
+  const minGap = o.minGap ?? 0.4, maxGap = o.maxGap ?? 1.6, keep = o.keep ?? 0.09;
+  const out: Disfluency[] = [];
+  for (let i = 0; i + 1 < words.length; i++) {
+    const a = words[i]!, b = words[i + 1]!;
+    const gap = b.start - a.end;
+    if (gap < minGap || gap > maxGap) continue;
+    // a sentence end is a breath and a pause, not a hesitation
+    if (/[.!?…]["»”)]*$/.test(a.text.trim())) continue;
+    const silent = silences.reduce((acc, s) => acc + Math.max(0, Math.min(b.start, s.end) - Math.max(a.end, s.start)), 0);
+    if (silent / gap > 0.4) continue;
+    out.push({ kind: 'hesitation', start: +(a.end + keep).toFixed(3), end: +(b.start - keep).toFixed(3), text: '(son non transcrit entre deux mots)' });
+  }
+  return out.filter((d) => d.end - d.start >= 0.15);
+}
+
 /** Removed spans of a keep list. */
 export function cutsFromKeep(keep: Interval[], duration: number): Interval[] {
   const cuts: Interval[] = [];

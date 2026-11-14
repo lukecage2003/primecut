@@ -6,15 +6,24 @@ import type { RecognisedWord } from '../production';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { BrowserWindow, app, dialog, ipcMain } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, net } from 'electron';
+import type { FetchLike } from '../engine/webImages';
+
+/** Internet access for the opt-in free-picture search: Chromium's network stack (system proxy settings). */
+const webFetch: FetchLike = (url, init) => net.fetch(url, { headers: init?.headers, signal: init?.signal }) as ReturnType<FetchLike>;
 import type { Project } from '../core/model';
-import { produceVideo, projectPaths, atomicWrite, renderGenerator, fingerprintFile } from '../engine';
+import { produceVideo, projectPaths, atomicWrite, renderGenerator, fingerprintFile, importMediaFile } from '../engine';
+import { loadMusicIndex } from '../engine/musicLibrary';
 import type { GeneratorSpec } from '../core/generators';
 import { DEFAULT_PREFERENCES, type ProductionPreferences, adaptPreferences, type EditStyle } from '../production';
 import { FORMAT_SIZES, type PreferencesState, type ProductionInputs, type ProductionOutcome } from '../shared/api';
 import { orchestrator } from './ipc';
+import { parseVocabulary } from '../production/vocabulary';
+import { analyzeReference, prefsFromProfile } from '../engine/styleReference';
+import { findTesseract } from '../engine/ocr';
 
 const prefsFile = () => path.join(app.getPath('userData'), 'production-preferences.json');
+const musicIndexFile = () => path.join(app.getPath('userData'), 'music-index.json');
 interface Stored extends PreferencesState {
   versions: Record<number, ProductionPreferences>;
 }
@@ -62,7 +71,8 @@ export function registerProductionIpc() {
             const t = await transcribe(narr.path, tcfg, path.join(path.dirname(projectFile), 'Cache'), {
               signal: c.signal,
               fingerprint: narr.fingerprint.partialHash + narr.fingerprint.size,
-              prompt: promptFromScript(inputs.script),
+              // with hesitation cutting, the prompt shows Whisper that hesitations are written (otherwise it leaves them out)
+              prompt: [prefs.cutDisfluencies ? 'Euh, alors, hum, ben…' : '', parseVocabulary(inputs.vocabulary ?? '').join(', '), promptFromScript(inputs.script)].filter(Boolean).join(', ').slice(0, 800),
               progress: (f) => c.progress(0.01 + 0.3 * f, `Transcription locale de la narration (${Math.round(f * 100)}%)`),
             });
             transcript = t.words;
@@ -75,13 +85,14 @@ export function registerProductionIpc() {
           }
         }
         const r = await produceVideo(
-          { project, projectDir: path.dirname(projectFile), ...(inputs.format ? { settings: FORMAT_SIZES[inputs.format], name: `Auto v${Object.values(project.sequences).filter((x) => x.production).length + 1} · ${inputs.format}` } : {}), script: inputs.script, narrationKind: inputs.narrationKind, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, pcorePlacement: loadSettings().pcore?.placement, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
+          { project, projectDir: path.dirname(projectFile), ...(inputs.format ? { settings: FORMAT_SIZES[inputs.format], name: `Auto v${Object.values(project.sequences).filter((x) => x.production).length + 1} · ${inputs.format}` } : {}), script: inputs.script, vocabulary: parseVocabulary(inputs.vocabulary ?? ''), narrationKind: inputs.narrationKind, narrationMediaId: inputs.narrationMediaId, musicMediaId: inputs.musicMediaId, mediaFolders: inputs.mediaFolders, prefs, transcript, musicIndexFile: musicIndexFile(), mediaIndexFile: path.join(app.getPath('userData'), 'media-index.json'), ocr: loadSettings().ocr ?? (findTesseract() ? { enabled: true, languages: 'eng+fra' } : undefined), pcoreEngine: loadSettings().pcore?.engine ?? 'v2', pcoreV2: loadSettings().pcore?.v2, pcorePlacement: loadSettings().pcore?.placement, webImages: prefs.webImages ? { fetchImpl: webFetch } : null, renderPCore: (a, n, st, sig) => renderPCoreAsset(a, n, st, path.join(path.dirname(projectFile), 'Cache'), sig) },
           (f, m) => {
             const base = transcript ? 0.31 : 0;
             c.progress(base + (1 - base) * f, m);
             c.log(m);
           },
           c.signal,
+          (patch) => c.live?.(patch),
         );
         r.report.transcription = transcription;
         results.set(id, r);
@@ -93,6 +104,15 @@ export function registerProductionIpc() {
     });
     void projectPaths;
     return { taskId: id };
+  });
+  ipcMain.handle('production:musicTrack', async (_e, projectFile: string, trackId: string) => {
+    const idx = await loadMusicIndex(musicIndexFile());
+    const t = idx.tracks[trackId];
+    if (!t || t.missing || !fs.existsSync(t.path)) throw new Error('Piste introuvable (fichier déplacé ou supprimé : relancez l’analyse de la bibliothèque)');
+    const media = await importMediaFile(t.path, path.dirname(projectFile));
+    const lic = t.overrides?.licence ?? t.licence;
+    media.rights = { usage: 'user-provided', source: 'music-library', license: lic.family ?? lic.text, checkedAt: new Date().toISOString(), note: lic.status === 'inconnue' ? 'Licence non déclarée : vérifiez vos droits avant publication.' : 'Licence déclarée dans la bibliothèque musicale.' };
+    return { media, lufs: t.loudness.integratedLufs };
   });
   ipcMain.handle('production:result', (_e, id: string) => {
     const r = results.get(id);
@@ -138,6 +158,41 @@ export function registerProductionIpc() {
       },
     }).promise,
   );
+  // "S'inspirer d'une vidéo": the editing of a video on this computer, measured locally, as preferences
+  ipcMain.handle('production:inspire', async (e, prefs: ProductionPreferences) => {
+    const w = BrowserWindow.fromWebContents(e.sender)!;
+    const r = await dialog.showOpenDialog(w, { title: 'Vidéo de référence (sur cet ordinateur)', properties: ['openFile'], filters: [{ name: 'Vidéo', extensions: ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'avi'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const file = r.filePaths[0];
+    return orchestrator.submit({
+      type: 'analysis',
+      label: `Style de « ${path.basename(file)} »`,
+      priority: 'high',
+      run: async (c) => {
+        const profile = await analyzeReference(file, { signal: c.signal, progress: (f, m) => c.progress(f, m) });
+        return { profile, ...prefsFromProfile(profile, prefs) };
+      },
+    }).promise;
+  });
+  // spoken edit instruction: recorded in the window, transcribed here with the local Whisper model
+  ipcMain.handle('production:transcribeCommand', async (_e, audio: Uint8Array) => {
+    const tcfg = loadSettings().transcriber;
+    if (!tcfg?.enabled || !tcfg.modelPath) throw new Error('Transcription locale non configurée (Réglages → Transcription) : tapez l’instruction à la place.');
+    const dir = path.join(app.getPath('userData'), 'commandes');
+    await fsp.mkdir(dir, { recursive: true });
+    const raw = path.join(dir, `instruction-${Date.now()}.webm`);
+    const wav = raw.replace(/\.webm$/, '.wav');
+    await fsp.writeFile(raw, Buffer.from(audio));
+    try {
+      const { ffmpeg } = await import('../engine/ffmpeg');
+      await ffmpeg(['-v', 'error', '-y', '-i', raw, '-ac', '1', '-ar', '16000', wav]);
+      const r = await transcribe(wav, tcfg, dir, { prompt: 'plans plus courts, baisse la musique, enlève les sous-titres, logo en haut à gauche, voix radio' });
+      return r.words.map((w) => w.text).join(' ').replace(/\s+([,.!?])/g, '$1').trim();
+    } finally {
+      await fsp.rm(raw, { force: true });
+      await fsp.rm(wav, { force: true });
+    }
+  });
   ipcMain.handle('production:chooseFolders', async (e) => {
     const w = BrowserWindow.fromWebContents(e.sender)!;
     const r = await dialog.showOpenDialog(w, { title: 'Dossiers de médias', properties: ['openDirectory', 'multiSelections'] });

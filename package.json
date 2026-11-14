@@ -17,7 +17,10 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "node scripts/build.mjs && playwright test --trace off",
     "dist:win": "node scripts/build.mjs && electron-builder --win --x64 --publish never",
-    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs gpl"
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs gpl",
+    "bench": "node scripts/bench/run.mjs",
+    "pcore:validate": "node scripts/build.mjs && node scripts/pcore/run-electron.mjs scripts/pcore/v2-validate.ts --",
+    "pcore:demo": "node scripts/build.mjs && node scripts/pcore/run-electron.mjs scripts/pcore/v2-demo.ts --"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -34,6 +37,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "an-array-of-english-words": "^2.0.0",
     "an-array-of-french-words": "^2.0.0",
     "immer": "^11.2.10",
@@ -54,6 +58,9 @@
       "dist/**/*",
       "package.json",
       "LICENSE"
+    ],
+    "asarUnpack": [
+      "node_modules/@napi-rs/**"
     ],
     "extraResources": [
       {
