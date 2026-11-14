@@ -202,7 +202,12 @@ async function doRender(job: PCoreRenderJob, onProgress?: (f: number) => void, s
     endCleanup();
     // close the page first: a request it was still sending must not reach a removed handler
     if (!win.isDestroyed()) win.destroy();
-    for (const [ch] of handlers) if (!ch.startsWith('__')) ipcMain.removeHandler(ch);
+    // a request the page sent just before closing gets a "finished" answer instead of an unregistered channel
+    for (const [ch] of handlers)
+      if (!ch.startsWith('__')) {
+        ipcMain.removeHandler(ch);
+        ipcMain.handle(ch, () => (ch === 'pcore:next' ? [] : undefined));
+      }
     ipcMain.removeAllListeners('pcore:fail');
   }
   ff.stdin.end();

@@ -84,20 +84,36 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
   const spoken = voice.filter((f) => f.speaking).map((f) => f.onset).sort((a, b) => a - b);
   const pulseAt = spoken[Math.floor(spoken.length * 0.82)] ?? 1;
   const nodAt = spoken[Math.floor(spoken.length * 0.96)] ?? 1;
-  let pulse = 0;
-  let pulseTarget = 0;
   let nod = 0;
   let nodVel = 0;
   let nodTarget = 0;
   let nodSign = 1;
   let lastNod = -Infinity;
-  let lastPulse = -Infinity;
+  // ---- voice reaction layer, zero lag: the render is offline, so each feature is smoothed forwards AND
+  // backwards (no delay, no overshoot), then added on top of the springs instead of going through them
+  const gate = voice.map((g) => (g.speaking ? 1 : 0));
+  const rel = (a: number[]) => {
+    const sorted = a.filter((q, j) => gate[j]).sort((p, q) => p - q);
+    const top = sorted[Math.floor(sorted.length * 0.95)] || 1;
+    return a.map((q) => Math.min(1, q / top));
+  };
+  const vEnv = zeroPhase(voice.map((g, j) => g.env * gate[j]!), fps, 0.13);
+  const vLow = zeroPhase(rel(voice.map((g, j) => g.low * gate[j]!)), fps, 0.15);
+  const vHigh = zeroPhase(rel(voice.map((g, j) => g.high * gate[j]!)), fps, 0.12);
+  // syllables: stressed attacks above the speaker's own 80th percentile, as short swells centred on the sound
+  const syl = voice.map((g) => (g.speaking && g.onset >= pulseAt * 0.98 ? Math.min(1, g.onset / Math.max(1e-3, nodAt)) : 0));
+  const vSyl = zeroPhase(zeroPhase(syl, fps, 0.07), fps, 0.07).map((q) => Math.min(1, q * 3.2));
+  // activity (speech vs silence) and the HUD readings, also without delay
+  const actArr = zeroPhase(voice.map((g) => (g.speaking ? 0.55 + 0.45 * g.env : g.silenceFor > 4 ? 0 : 0.35)), fps, 0.4);
+  const levelArr = zeroPhase(voice.map((g, j) => g.env * gate[j]!), fps, 0.08);
+  const specArr: number[][] = Array.from({ length: nb }, (_, b) =>
+    zeroPhase(voice.map((g, j) => (gate[j] ? (spectrum?.[j] ? spectrum[j]![b]! : g.env * (0.6 + 0.4 * Math.sin(b * 0.7 + j / fps * 3))) : 0)), fps, 0.07),
+  );
   for (let i = 0; i < voice.length; i++) {
     const f = voice[i]!;
     const t = timeOffset + i / fps;
     // ---- base: activity follows speech slowly (attack 0.35 s, release 1.2 s), dormant after long silences
-    const want = f.speaking ? 0.55 + 0.45 * f.env : f.silenceFor > 4 ? 0 : 0.35;
-    act += (want - act) * (1 - Math.exp(-dt / (want > act ? 0.35 : 1.2)));
+    act = actArr[i]!;
     const target: Pose = { ...dormant };
     for (const k of POSE_KEYS) target[k] = dormant[k] + (active[k] - dormant[k]) * act;
     // ---- cues blended by priority (several expressions compose)
@@ -120,11 +136,10 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
     // ---- measured voice reactions (loudness drives amplitude, never the choice of expression)
     const e = f.speaking ? f.env : 0;
     const R = settings.narrative.reaction * an.intensity;
-    target.coreGlow += 0.25 * e * R;
-    target.orbSpin += 0.12 * e * R;
-    target.energyDensity += 0.18 * f.high * e * R;
-    target.innerPulse += 0.35 * f.onset * R;
-    target.scale += 0.015 * e * R;
+    // slow components only go through the springs (rotation speed, inner activity); the fast reactions
+    // (glow, size, ring spread, sparkle) are the zero-lag voice layer added after the springs
+    target.orbSpin += 0.12 * vEnv[i]! * R;
+    target.innerPulse += 0.25 * vSyl[i]! * R;
     // ---- organic micro-motion: calm at rest, quieter when concentrating
     const micro = an.micro * (1 - 0.6 * target.focus);
     target.tiltX += 0.05 * micro * smoothNoise(t, seed);
@@ -153,14 +168,6 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
     const sway = an.rotation * (1 - 0.5 * x.focus) * (0.75 + 0.35 * act);
     const yawSway = sway * (0.17 * Math.sin((2 * Math.PI * t) / 7.3 + seed) + 0.06 * smoothNoise(t * 0.35, seed + 7));
     const pitchSway = sway * (0.06 * Math.sin((2 * Math.PI * t) / 9.1 + seed * 0.5) + 0.02 * smoothNoise(t * 0.4, seed + 9));
-    // syllable pulses: a short swell on the narrator's stressed syllables (≥ 0.18 s apart)
-    if (f.speaking && f.onset >= pulseAt && f.onset > 0.02 && t - lastPulse > 0.18) {
-      pulseTarget = Math.min(1, pulseTarget + 0.6 * Math.min(1, f.onset / Math.max(1e-3, nodAt)));
-      lastPulse = t;
-    }
-    // a swell, not a flash: quick (≈ 60 ms) rise, 0.2 s fall
-    pulse += (pulseTarget - pulse) * (1 - Math.exp(-dt / 0.06));
-    pulseTarget *= Math.exp(-dt / 0.2);
     // accent nods: on the strongest attacks, a small turn to one side, then back (spring, alternating sides)
     if (f.speaking && f.onset >= nodAt && f.onset > 0.03 && t - lastNod > 1.6) {
       nodTarget = 0.13 * nodSign * an.rotation * settings.narrative.reaction;
@@ -188,19 +195,23 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
     const on = (k: LayerId) => (L[k].enabled ? L[k].intensity : 0);
     const layers: Record<LayerId, number> = { core: on('core'), inner: on('inner'), orbital: on('orbital') * (1 - 0.45 * x.focus), energy: on('energy') * (1 - 0.6 * x.focus), atmosphere: on('atmosphere') * (1 - 0.3 * x.focus), hud: on('hud') };
     // HUD: the measured spectrum of the voice (fast attack, slower release: readable, no flicker)
-    const sf = spectrum?.[i];
-    for (let b = 0; b < nb; b++) {
-      const target = f.speaking ? (sf ? sf[b]! : e * (0.6 + 0.4 * Math.sin(b * 0.7 + t * 3))) : 0;
-      spec[b] = spec[b]! + (target - spec[b]!) * (target > spec[b]! ? 0.55 : 0.12);
-    }
-    level += ((f.speaking ? f.env : 0) - level) * 0.25;
+    for (let b = 0; b < nb; b++) spec[b] = Math.max(0, specArr[b]![i]!);
+    level = levelArr[i]!;
     scan += (0.35 + 0.6 * x.orbSpin) * an.speed * 2 * Math.PI * dt;
     const dominant = mix.reduce((a, b) => (b.w >= a.w ? b : a), mix[0]!).id;
     out.push({
       v: 2,
       expr: dominant,
       mix: mix.filter((m) => m.w > 0.05).slice(-3),
-      pose: { ...x, edge: Math.min(1, x.edge + 0.35 * pulse), coreGlow: Math.min(1.2, x.coreGlow + 0.12 * pulse) },
+      pose: {
+        ...x,
+        // loudness → glow; syllables → a bright swell on the edges; low band → rings breathe out; high band → sparkle
+        coreGlow: Math.min(1.25, x.coreGlow + 0.3 * vEnv[i]! * R + 0.14 * vSyl[i]! * R),
+        edge: Math.min(1, x.edge + 0.4 * vSyl[i]! * R + 0.12 * vHigh[i]! * R),
+        orbSpread: Math.min(RANGE.orbSpread?.[1] ?? 1.5, x.orbSpread + 0.22 * vLow[i]! * R),
+        energyDensity: Math.min(RANGE.energyDensity?.[1] ?? 1.5, x.energyDensity + 0.3 * vHigh[i]! * R),
+        halo: x.halo + 0.18 * vEnv[i]! * R,
+      },
       orbPhase,
       innerPhase,
       swirlPhase,
@@ -210,16 +221,16 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
       // V1-compatible fields (graphs, placement, older readers)
       state: STATE_OF[dominant],
       energy: e,
-      glow: Math.min(1, x.coreGlow),
-      ringSpread: x.orbSpread,
+      glow: Math.min(1, x.coreGlow + 0.3 * vEnv[i]! * R + 0.14 * vSyl[i]! * R),
+      ringSpread: x.orbSpread + 0.22 * vLow[i]! * R,
       ringAngle: orbPhase,
-      particles: x.energyDensity,
+      particles: x.energyDensity + 0.3 * vHigh[i]! * R,
       burst: Math.max(0, x.energyFlow),
       rotY,
       rotX: x.tiltX,
       rotZ: sway * 0.025 * Math.sin((2 * Math.PI * t) / 11.3 + seed * 2),
       floatY: (0.012 + 0.018 * an.micro) * Math.sin((2 * Math.PI * t) / 5.7 + seed) * (1 - x.fragment),
-      scale: x.scale * (1 + 0.035 * pulse * settings.narrative.reaction),
+      scale: x.scale * (1 + (0.022 * vEnv[i]! + 0.03 * vSyl[i]!) * R),
       fragment: x.fragment,
       trail: x.swirl,
       low: f.low,
@@ -227,6 +238,20 @@ export function animateV2(voice: VoiceFrame[], fps: number, cues: PCoreCue[], se
     });
   }
   return out;
+}
+
+/**
+ * Zero-phase smoothing: a one-pole low-pass run forwards then backwards (time constant `tau` seconds).
+ * No delay and no overshoot — possible because P-CORE is rendered offline with the whole voice known.
+ */
+export function zeroPhase(a: number[], fps: number, tau: number): number[] {
+  const k = 1 - Math.exp(-1 / (fps * Math.max(1e-3, tau)));
+  const f = new Array<number>(a.length);
+  let y = a[0] ?? 0;
+  for (let i = 0; i < a.length; i++) f[i] = y += (a[i]! - y) * k;
+  y = f[a.length - 1] ?? 0;
+  for (let i = a.length - 1; i >= 0; i--) f[i] = y += (f[i]! - y) * k;
+  return f;
 }
 
 /** Largest per-frame change of the visible parameters (used to prove there is no jump). */

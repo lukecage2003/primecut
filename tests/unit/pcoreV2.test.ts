@@ -273,3 +273,36 @@ describe('P-CORE V2 dynamic presence and timeline', () => {
     expect(r.sequence.tracks.filter((t) => t.kind === 'video')).toHaveLength(2);
   });
 });
+
+import { zeroPhase } from '../../src/pcore/v2/animation';
+describe('P-CORE V2 voice reaction', () => {
+  it('zero-phase smoothing has no delay: a pulse stays centred on its sound', () => {
+    const a = Array.from({ length: 90 }, (_, i) => (i >= 40 && i < 50 ? 1 : 0));
+    const z = zeroPhase(a, 30, 0.13);
+    const peak = z.indexOf(Math.max(...z));
+    expect(Math.abs(peak - 44.5)).toBeLessThanOrEqual(1);
+    expect(Math.max(...z.slice(1).map((v, i) => Math.abs(v - z[i]!)))).toBeLessThan(0.12);
+  });
+  it('the glow follows the voice without lag and louder speech glows more', () => {
+    const fps = 30;
+    const voice = Array.from({ length: 300 }, (_, i) => {
+      const speaking = Math.floor(i / 30) % 2 === 0;
+      const env = speaking ? (Math.floor(i / 60) % 2 ? 0.9 : 0.4) : 0;
+      return { rms: env, level: env, env, low: env, mid: env, high: env * 0.5, onset: i % 30 === 0 && speaking ? 0.5 : 0, speaking, silenceFor: speaking ? 0 : (i % 30) / fps, rate: 4 };
+    });
+    const frames = animateV2(voice as never, fps, [], presetSettings('classic'));
+    const glow = frames.map((f) => f.glow);
+    const env = voice.map((v) => v.env);
+    const corr = (L: number) => {
+      const a = env.slice(0, env.length - L), b = glow.slice(L);
+      const ma = a.reduce((s, x) => s + x, 0) / a.length, mb = b.reduce((s, x) => s + x, 0) / b.length;
+      let c = 0, va = 0, vb = 0;
+      for (let i = 0; i < a.length; i++) ((c += (a[i]! - ma) * (b[i]! - mb)), (va += (a[i]! - ma) ** 2), (vb += (b[i]! - mb) ** 2));
+      return c / Math.sqrt(va * vb);
+    };
+    const lags = [0, 1, 2, 3, 4, 5, 6].map(corr);
+    expect(lags.indexOf(Math.max(...lags))).toBeLessThanOrEqual(1); // ≤ 33 ms
+    const loud = glow.slice(70, 85), soft = glow.slice(10, 25);
+    expect(Math.max(...loud)).toBeGreaterThan(Math.max(...soft));
+  });
+});
