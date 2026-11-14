@@ -11,7 +11,7 @@ export const FFMPEG_REQUIREMENTS = {
   decoders: ['h264', 'hevc', 'libvpx-vp9', 'vp9', 'prores', 'png', 'mjpeg', 'webp', 'mp3', 'aac', 'flac', 'vorbis', 'opus', 'pcm_s16le', 'pcm_s24le'],
   filters: [
     'acompressor', 'aecho', 'aevalsrc', 'afade', 'afftdn', 'aformat', 'alimiter', 'alphaextract', 'amerge', 'amix', 'anoisesrc', 'anullsrc', 'apad', 'aresample', 'aselect', 'asetpts', 'asplit', 'ass', 'atrim',
-    'bandreject', 'blend', 'boxblur', 'color', 'colorchannelmixer', 'concat', 'crop', 'deesser', 'ebur128', 'eq', 'equalizer', 'fade', 'format', 'fps', 'gblur', 'geq', 'gradients', 'highpass', 'lagfun',
+    'bandreject', 'blend', 'color', 'colorchannelmixer', 'concat', 'crop', 'curves', 'deesser', 'ebur128', 'equalizer', 'fade', 'format', 'fps', 'gblur', 'geq', 'gradients', 'highpass', 'hue', 'agate', 'treble', 'afade', 'lagfun',
     'life', 'lowpass', 'mandelbrot', 'noise', 'overlay', 'pad', 'premultiply', 'rotate', 'scale', 'setpts', 'setsar', 'silencedetect', 'sine', 'split', 'testsrc2', 'trim', 'unpremultiply', 'volume',
   ],
   muxers: ['mp4', 'mov', 'webm', 'matroska', 'wav', 'flac', 'image2', 'null', 'f32le', 's16le', 'rawvideo', 'srt', 'webvtt'],

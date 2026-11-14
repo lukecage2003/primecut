@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ffmpeg, importMediaFile } from '../../src/engine';
+import { listedEncoders } from '../../src/engine/videoEncoders';
+
+/** Test videos: H.264 when this FFmpeg has x264, otherwise VP9 (the installer's LGPL FFmpeg has no x264). */
+export async function testVideoCodec(): Promise<string[]> {
+  return (await listedEncoders()).has('libx264') ? ['-c:v', 'libx264'] : ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '1M'];
+}
 
 export function tmpDir(prefix = 'ps-test-'): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -12,7 +18,7 @@ export async function makeColorClip(file: string, color: string, seconds: number
   const { rate = '30', size = '640x360', freq = 440, audio = true } = opts;
   const args = ['-v', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=${size}:r=${rate}:d=${seconds}`];
   if (audio) args.push('-f', 'lavfi', '-i', `sine=f=${freq}:d=${seconds}:sample_rate=48000`);
-  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '10');
+  args.push(...(await testVideoCodec()), '-pix_fmt', 'yuv420p', '-g', '10');
   if (audio) args.push('-c:a', 'aac', '-shortest');
   args.push(file);
   await ffmpeg(args);
@@ -21,7 +27,7 @@ export async function makeColorClip(file: string, color: string, seconds: number
 
 /** Variable frame rate clip (mix of 30 and 15 fps sections). */
 export async function makeVfrClip(file: string) {
-  await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=2', '-vf', "select='if(lt(t,1),1,not(mod(n,2)))'", '-fps_mode', 'vfr', '-c:v', 'libx264', file]);
+  await ffmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=2', '-vf', "select='if(lt(t,1),1,not(mod(n,2)))'", '-fps_mode', 'vfr', ...(await testVideoCodec()), file]);
   return file;
 }
 

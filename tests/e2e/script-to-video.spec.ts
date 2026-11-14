@@ -110,6 +110,8 @@ test('script + narration + folder → generated video', async () => {
 });
 
 test('faceless: no images → motion design shots, editable and re-rendered from the Inspector', async () => {
+  // every shot is a rendered composition plus P-CORE: about 3 minutes on a CI runner without a GPU
+  test.setTimeout(420000);
   const w = workspace();
   const { file: narration } = await makeNarration(w.media, ['Tony Stark construit une intelligence artificielle.', 'En 1963 puis en 2008, Iron Man change tout.']);
   const { app, page } = await launch(w.userData);

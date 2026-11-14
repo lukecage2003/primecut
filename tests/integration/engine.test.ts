@@ -22,7 +22,7 @@ import {
   ProjectFileError,
   hardwareReport,
 } from '../../src/engine';
-import { audioRms, frameColor, makeColorClip, makeVfrClip, tmpDir } from './fixtures';
+import { audioRms, frameColor, makeColorClip, makeVfrClip, testVideoCodec, tmpDir } from './fixtures';
 
 let dir: string;
 let red: string, blue: string, vfr: string, png: string, wav: string;
@@ -43,7 +43,7 @@ describe('media import', () => {
   it('probes video, audio, stills and VFR', async () => {
     const a = await importMediaFile(red, dir);
     expect(a.kind).toBe('video');
-    expect(a.probe.video).toMatchObject({ codec: 'h264', width: 640, height: 360, frameRate: { num: 30, den: 1 } });
+    expect(a.probe.video).toMatchObject({ codec: (await testVideoCodec()).includes('libx264') ? 'h264' : 'vp9', width: 640, height: 360, frameRate: { num: 30, den: 1 } });
     expect(a.probe.audio?.sampleRate).toBe(48000);
     expect(a.probe.durationSec).toBeGreaterThan(1.9);
     expect(a.relativePath).toBe('red.mp4');

@@ -58,6 +58,16 @@ function displaySize(m: MediaAsset): { w: number; h: number } {
   return rot ? { w: v.height, h: v.width } : { w: v.width, h: v.height };
 }
 
+/**
+ * Blurred, darkened background behind a picture, with LGPL filters only (the installer's FFmpeg has no GPL
+ * GPL-only box blur and eq filters): blur at quarter size then scale back (same look, faster), saturation and brightness.
+ */
+export function softBackground(W: number, H: number, radiusDiv: number, brightness: number, saturation: number): string {
+  const w = Math.max(2, Math.round(W / 8) * 2), h = Math.max(2, Math.round(H / 8) * 2);
+  const sigma = Math.max(1, (H / radiusDiv / 4) * 0.9).toFixed(2);
+  return `scale=${w}:${h},gblur=sigma=${sigma}:steps=2,scale=${W}:${H}:flags=bicubic,hue=s=${saturation},colorchannelmixer=rr=${brightness}:gg=${brightness}:bb=${brightness}`;
+}
+
 export function encoderArgs(s: ExportSettings, encoder: string): string[] {
   const a: string[] = [];
   if (encoder === 'libx264' || encoder === 'libx265') {
@@ -208,7 +218,7 @@ export function buildExportPlan(
     if (panelsFull && it.media.kind === 'image') {
       const head = chain.slice(0, 4).join(',');
       filters.push(`[${idx}:v]${head},split[s${idx}a][s${idx}b]`);
-      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=${Math.round(H / 30)}:2,eq=brightness=-0.16:saturation=0.8,setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
+      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},${softBackground(W, H, 30, 0.82, 0.8)},setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
       const nb = `ov${ov++}`;
       filters.push(`[${last}][bg${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nb}]`);
       last = nb;
@@ -230,7 +240,7 @@ export function buildExportPlan(
       const head = chain.slice(0, 4).join(',');
       const rest = chain.slice(4);
       filters.push(`[${idx}:v]${head},split[s${idx}a][s${idx}b]`);
-      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=${Math.round(H / 40)}:2,eq=brightness=-0.12:saturation=0.85,setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
+      filters.push(`[s${idx}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},${softBackground(W, H, 40, 0.86, 0.85)},setsar=1,format=yuva420p${fades.length ? ',' + fades.join(',') : ''},${offset}[bg${idx}]`);
       const nb = `ov${ov++}`;
       filters.push(`[${last}][bg${idx}]overlay=x=0:y=0:eof_action=pass:format=auto[${nb}]`);
       last = nb;

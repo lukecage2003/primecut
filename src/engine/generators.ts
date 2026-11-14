@@ -294,7 +294,8 @@ export async function renderGenerator(spec: GeneratorSpec, o: RenderGeneratorOpt
     // background only: the hologram stays out (P-CORE is composited above)
     f.push('[h4]nullsink');
   } else f.push(`[h4]split[hA][hB];[hB]scale=${q}:${q}:flags=bilinear,gblur=sigma=${Math.max(1, Math.round(q / 90))},scale=${S}:${S}:flags=bicubic[hG];[hA][hG]blend=all_mode=screen:all_opacity=0.6[holo]`);
-  const grade = kind === 'dramatic' ? ',eq=contrast=1.25:saturation=1.2' : '';
+  // (LGPL filters only: a contrast S-curve and saturation)
+  const grade = kind === 'dramatic' ? ",curves=all='0/0 0.25/0.17 0.5/0.5 0.75/0.83 1/1',hue=s=1.2" : '';
   if (spec.backdrop) f.push(`[${last}]format=gbrp${grade}[o_h]`);
   else f.push(`[${last}]format=gbrp,split[bA][bB];[bB]crop=${S}:${S}:${fx}:${fy}[bC];[bC][holo]blend=all_mode=screen[bH];[bA][bH]overlay=x=${fx}:y=${fy}:format=gbrp${grade}[o_h]`);
   last = 'o_h';
